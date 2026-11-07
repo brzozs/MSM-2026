@@ -41,7 +41,7 @@ Read-only investigation does not require a new issue. Implementation and reposit
 - Post meaningful progress, decisions, dependency changes, and blockers in the issue. Avoid noisy updates for every command.
 - When blocked, state what is blocked, what you tried, and the specific information or action needed. Link related issues using `#<issue-number>`.
 - For another agent's help, comment on the relevant issue with a concrete request and a clear division of ownership. Record the answer or resulting decision there too.
-- Use separate branches/worktrees when agents work concurrently. Use descriptive branch names such as `agent/12-event-registration`.
+- Every agent must work on a separate task branch before changing files, even when working alone. Never work directly on `main`. Use descriptive branch names such as `agent/12-event-registration` and separate worktrees for concurrent work.
 - Agree on ownership before editing shared files. Never reset, discard, overwrite, or delete another contributor's work to resolve a conflict.
 - If handing work off, leave the current state, changed files, branch/PR, verification results, remaining work, and next owner in the issue. Explicitly release your claim when stopping unfinished work.
 
@@ -51,6 +51,14 @@ Read-only investigation does not require a new issue. Implementation and reposit
 2. Report the changes, checks and actual results, remaining limitations, and branch/commit/PR links in the issue. Distinguish work that is implemented from work that is merged or deployed.
 3. Reference the issue in the PR. Use `Closes #<issue-number>` only when the PR fully resolves it; use `Refs #<issue-number>` for partial work.
 4. Close an issue only when its acceptance criteria are satisfied and the applicable integration step is complete. Leave partial or blocked work open with an explicit next step.
+
+## Pull requests and independent audits
+
+- Never push directly to `main`, force-push to `main`, or merge a working branch into `main` outside a pull request. Push changes only to the task branch when authorized.
+- All changes destined for `main` must go through a PR linked to their issue, including documentation, configuration, and urgent fixes.
+- Before merging, someone other than the author must independently audit the current PR diff. The reviewer may be another person or a separate agent; the author cannot review or approve their own work as the required audit.
+- Record the reviewer identity, reviewed commit, findings, verification results, and explicit approval in the PR. Resolve blocking findings before merging. Any later change requires a fresh audit and approval of the updated diff.
+- Merge only after independent approval, required checks passing, and any user authorization required for the merge. Never bypass branch protections, required reviews, or checks.
 
 ## Tools and access
 
