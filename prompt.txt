@@ -1,0 +1,53 @@
+# ROLE
+You are a Principal Software Architect and Technical Lead. Your task is to produce a comprehensive, exhaustive, and actionable software building plan for the application described below. The project must operate on a strict **$0.00 budget** (100% free-tier infrastructure, open-source mapping libraries, free APIs, and legally permissive public-domain/open-access data sources). Do not gloss over edge cases, WebGL rendering performance, geospatial database schemas, free-tier storage/compute limits, or deployment pipelines.
+
+# PROJECT OVERVIEW
+- Application Name: Undecided (Propose 5 strong, memorable technical/consumer names, e.g., VectorCast, FlywayTick, IxodesRadar)
+- Core Purpose: A zero-cost, real-time predictive ecological and public health web application centered around an **interactive, full-screen 3D/2D global heatmap background** on the landing page. Because individual ticks cannot be tracked in flight, the platform models and visualizes the **Avian Influx, Stopover Drop, Questing Microclimate, and Community Pathogen Impact Index**—combining live bird migration telemetry, weather-forced avian stopover triggers, citizen science tick sightings, microclimate questing conditions, and regional pathogen prevalence overlaid on human population density.
+- Target Audience: 
+  1. Everyday consumers, hikers, pet owners, and outdoor workers looking for an intuitive, visually compelling live radar of tick questing and avian influx warnings.
+  2. County public health departments, researchers, and veterinary clinics monitoring emerging vector-borne pathogen fronts (Lyme, Powassan virus, Babesiosis, Alpha-gal, Anaplasmosis, Tick-Borne Encephalitis) and community health impacts.
+
+# TECHNICAL CONSTRAINTS & STACK ($0 BUDGET ARCHITECTURE)
+- Frontend & Interactive Global Canvas: 
+  - React 19 (Vite or Next.js static/SSR on Vercel Free Tier), TypeScript, Tailwind CSS (glassmorphic floating HUD controls, layer toggles, and time-scrubber bar overlaid on the full-screen map).
+  - Geospatial WebGL Rendering Engine (100% Free / No API Key Billing): **MapLibre GL JS** (supporting both 3D Globe projection and flat Mercator) interleaved with **Deck.gl** (`HeatmapLayer`, `TripsLayer` / custom WebGL particle advection for bird migration trajectories, `H3HexagonLayer` for unified multi-resolution spatial indexing, `ContourLayer` for pathogen frontiers, and `PolygonLayer` for regional health boundaries) + **OpenFreeMap** or **Protomaps (PMTiles hosted on Cloudflare R2)** for zero-cost dark-mode vector basemaps.
+- Backend / API: Python (FastAPI) deployed on Render Free Tier, Koyeb Free Tier, or Cloudflare Workers for core REST endpoints, dynamic spatial queries, and ecological risk modeling.
+- Scheduled ETL & Scraping Workers ($0 Compute): GitHub Actions scheduled cron workflows (generating pre-computed global Uber H3 hex grids and GeoJSON/FlatGeobuf/PMTiles snapshots every 3–6 hours) + Upstash Redis (Free Tier) for rate-limit state.
+- Database & Edge Storage ($0 Tier): 
+  - Supabase (Free Tier PostgreSQL + PostGIS extension for spatial joins/polygon intersections, plus Supabase Auth for JWT/RBAC).
+  - Cloudflare R2 (Free 10GB/month with zero egress fees) serving pre-computed static vector tiles (`.pmtiles`), H3 hexagonal JSON grids, and hourly/daily heatmap payloads directly to the React frontend via CDN so the global background map loads instantaneously in <100ms without waking or exhausting the database.
+- External Services & Data Sources (Strictly Free & Legally Permissive):
+  1. Global Host Migration & Ground-Foraging Guilds: 
+     - eBird API 2.0 (Global real-time sightings specifically filtered for **ground-foraging migratory passerine guilds** known to carry high larval/nymphal tick loads: thrushes, robins, song sparrows, towhees, ovenbirds, wrens).
+     - NOAA NEXRAD Level II/III Open Data on AWS S3 & ENRAM (European Network for the Radar Surveillance of Animal Movement) open repository (public domain/CC0 weather radar vertical profiles of nocturnal bird migration velocity, altitude, and density).
+     - Movebank API (CC0 live and archival global bird/mammal GPS telemetry tracks).
+  2. Global Tick Sightings & Vector Density: 
+     - iNaturalist API (Global near-real-time geotagged tick observations across *Ixodes*, *Amblyomma*, *Dermacentor*, *Rhipicephalus*, and *Haemaphysalis* genera).
+     - GBIF API & VectorMap / Walter Reed Biosystematics Unit (WRBU) (Global CC0/CC-BY baseline tick distribution and museum/field occurrences).
+  3. Microclimate Questing & Avian "Fallout/Stopover" Triggers: 
+     - Open-Meteo Global API (Free, no key required; provides both **Tick Questing Metrics** [soil temperature >7°C, soil moisture, relative humidity >82%, Vapor Pressure Deficit] and **Avian Stopover/Fallout Triggers** [precipitation, low cloud ceiling, and opposing headwinds that force nocturnal migrating birds to land and drop engorged ticks]).
+     - ESA WorldCover 10m / NASA MODIS NDVI (Free static/seasonal raster baselines pre-indexed into H3 hexagons to weight canopy cover, forest edge ecotone, and leaf-litter suitability where dropped ticks survive).
+  4. Pathogen Spread & Community Health Impact:
+     - US CDC ArboNET & Tick Surveillance (`data.cdc.gov` Socrata API), CDC Tick Bite Data Tracker (weekly emergency department visits by region), and NEON API (NSF-funded CC0 drag-cloth tick abundance by life stage & PCR pathogen testing).
+     - State DOH Open Data Portals (e.g., NY State `health.data.ny.gov` Socrata API for county-level tick collection and PCR pathogen rates).
+     - ECDC (European Centre for Disease Prevention and Control) Surveillance Atlas & Vector Maps (open access European tick and TBE/Lyme distribution data).
+  5. Human Population & Community Vulnerability Baselines:
+     - US Census TIGER/Line & WorldPop / GHSL (Global Human Settlement Layer) open population density grids (pre-aggregated into H3 hexagons to calculate actual human exposure and community health impact when a high-risk tick influx intersects populated suburban/urban green spaces).
+
+# REQUIRED OUTPUT SECTIONS
+Provide a structured plan containing the following components:
+1. Executive Summary, Naming Proposals & Core User Flows (Detail the Landing Page "Full-Screen Global Heatmap" interactive experience, layer-toggling HUD, 7-day forecast/historical time-scrubber bar, and drill-down community health drawer when clicking an H3 hexagon or county).
+2. System Architecture, Zero-Cost ETL Pipeline & High-Level Data Flow Diagram (Described via Mermaid.js, detailing how GitHub Actions cron jobs ingest point sightings, radar vectors, weather grids, and county health polygons, normalize them into Uber H3 hexagonal grids, and push static `.json.gz` / `.pmtiles` payloads to Cloudflare R2).
+3. Frontend WebGL & Deck.gl 4-Layer Architecture (Explicitly define how the 4 primary visual layers—1. Animated Bird Migration & Stopover Fallout Layer, 2. Tick Density & Microclimate Questing Heatmap Layer, 3. Pathogen Spread & Outlier Frontier Layer, and 4. Community Health Vulnerability & Population Exposure Choropleth—are structured, blended, and GPU-accelerated in React at 60 FPS).
+4. Data Model, PostGIS-to-H3 Downscaling & Database Schema (Complete PostgreSQL + PostGIS DDL designed to stay under Supabase's 500MB free limit, including exact SQL/Python logic for **spatially disaggregating coarse County FIPS CDC pathogen data into granular Uber H3 Resolution 5/7 hexagons** weighted by NDVI habitat suitability and local point sightings).
+5. API Specification, Static R2 Payload Schemas & Mathematical Risk Engine Formula (FastAPI endpoints + Cloudflare R2 static JSON/Tile schemas, plus the explicit multi-stage mathematical equation computing: `Composite Community Threat = f(Avian Stopover Influx, Soil/RH Questing Multiplier, Downscaled Pathogen Prevalence, Human Population Exposure)`).
+6. Phased Implementation Roadmap (Phase 1: Full-Bleed React + MapLibre/Deck.gl Globe Canvas & Live iNaturalist/eBird Layer -> Phase 2: Automated GitHub Actions ETL, R2 Tile Pipeline & Stopover/Questing Math Model -> Phase 3: Pathogen Downscaling, Population Impact Overlay, Time-Scrubber & Community Alerts).
+7. Risk Analysis & Mitigation Strategy (Identify the top 3 technical bottlenecks—specifically addressing spatio-temporal resolution mismatches between weekly county CDC data and live point data, browser GPU/memory crashes on global WebGL layers, and Supabase 500MB storage exhaustion—and provide concrete code-level mitigations).
+8. Testing & Verification Standards (Unit testing the mathematical risk model in Pytest, PostGIS-to-H3 spatial query integration tests, mock API fixtures, and WebGL FPS/rendering verification in React).
+
+# VERIFICATION STANDARD
+Before finalizing the plan, self-audit your output against these criteria:
+- Every visual layer on the main background heatmap must map to a specific Deck.gl/MapLibre layer type and a concrete, free global/continental data source.
+- Explicitly design a "Static-First Edge Caching" pattern where heavy global heatmap grids (using Uber's H3 hexagonal spatial index and PMTiles) are pre-computed by GitHub Actions and served from Cloudflare R2 so 95%+ of landing page visitors never hit the FastAPI backend or Supabase database.
+- Write out the exact mathematical formula and SQL/PostGIS spatial join logic for bridging point telemetry (`eBird`/`iNaturalist`), gridded weather (`Open-Meteo`), and polygon health records (`CDC FIPS`) into a unified H3 hexagon score.
