@@ -1,6 +1,7 @@
 import type { Position } from 'geojson';
 import type { StateBoundaries } from './mapTypes';
 import type { MigrationRoute } from './mapFrames';
+import { buildDemoFrame, sampleTickActivityAtCoordinate } from './mapFrames.ts';
 import type { ActivityGlowFrame } from './activityGlow';
 
 export type StateFeature = StateBoundaries['features'][number];
@@ -63,13 +64,14 @@ export function buildRegionalPreview(state: StateFeature, selectedDayIndex: numb
   const regionalHeightScale = Math.min(30000, (north - south) * 111320 * 0.025);
   if (!(east > west && north > south)) throw new Error(`State ${state.properties.code} has no usable boundary area.`);
   const hotspots: ActivityGlowFrame = { type: 'FeatureCollection', features: [] };
+  const samplePoints = buildDemoFrame(selectedDayIndex).observations.features;
   let seed = Number(state.properties.fips) + 1;
   const nextRandom = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
   // Fixed, clearly synthetic positions; daily sample intensity changes independently.
   for (let attempt = 0; attempt < 6000 && hotspots.features.length < 32; attempt += 1) {
     const position = [west + nextRandom() * (east - west), south + nextRandom() * (north - south)];
     if (!stateContainsCoordinate(state, position, bounds)) continue;
-    const intensity = 0.25 + (Math.sin(hotspots.features.length * 1.7 + selectedDayIndex * 0.65 + Number(state.properties.fips) * 0.23) + 1) * 0.3;
+    const intensity = sampleTickActivityAtCoordinate(position, samplePoints);
     hotspots.features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: position },
       properties: { intensity, display_height: 20, is_example: true } });
   }

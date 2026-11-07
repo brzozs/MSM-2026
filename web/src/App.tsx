@@ -14,10 +14,10 @@ export default function App() {
   const [visibleLayers, setVisibleLayers] = useState<VisibleLayers>({ bird_activity: true, tick_activity: true, pathogen_evidence: false, community_exposure: false });
   const [selectedStateCode, setSelectedStateCode] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(3);
-  const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
+  const [layerPanelOpen, setLayerPanelOpen] = useState(() => window.innerWidth > 760);
   const [aboutPreviewOpen, setAboutPreviewOpen] = useState(false);
   const stateSelectorRef = useRef<HTMLSelectElement>(null);
-  const mobileLayerTriggerRef = useRef<HTMLButtonElement>(null);
+  const layerPanelTriggerRef = useRef<HTMLButtonElement>(null);
   const days = useMemo(() => createTimelineDays(new Date()), []);
   const states = useMemo(() => [...(stateBoundaries?.features ?? [])].sort((first, second) => first.properties.name.localeCompare(second.properties.name)), [stateBoundaries]);
   const selectedState = states.find((state) => state.properties.code === selectedStateCode)?.properties;
@@ -35,15 +35,25 @@ export default function App() {
     setVisibleLayers((currentLayers) => ({ ...currentLayers, [layerId]: !currentLayers[layerId] }));
   }
 
+  function openLayerPanel() {
+    setLayerPanelOpen(true);
+    requestAnimationFrame(() => stateSelectorRef.current?.focus());
+  }
+
+  function minimizeLayerPanel() {
+    setLayerPanelOpen(false);
+    requestAnimationFrame(() => layerPanelTriggerRef.current?.focus());
+  }
+
   function leaveStateFocus() {
     setSelectedStateCode(null);
-    if (window.innerWidth <= 760) mobileLayerTriggerRef.current?.focus();
-    else stateSelectorRef.current?.focus();
+    if (layerPanelOpen) stateSelectorRef.current?.focus();
+    else layerPanelTriggerRef.current?.focus();
   }
 
   return <main className={`app-shell ${selectedState ? 'state-is-focused' : ''}`}>
     <h1 className="sr-only">VectorCast ecological map</h1>
-    <a className="skip-link" href="#state-selector">Choose a region</a>
+    <a className="skip-link" href="#state-selector" onClick={(event) => { event.preventDefault(); openLayerPanel(); }}>Choose a region</a>
     {stateBoundaries && <MapCanvas stateBoundaries={stateBoundaries} selectedStateCode={selectedStateCode} selectedDayIndex={selectedDayIndex} visibleLayers={visibleLayers} onSelectState={setSelectedStateCode} />}
     {geographyError && <div className="map-loading" role="alert">The map boundaries could not load. Refresh the page to try again.</div>}
     <div className="map-vignette" />
@@ -54,12 +64,12 @@ export default function App() {
       <button className="sample-badge" aria-expanded={aboutPreviewOpen} onClick={() => setAboutPreviewOpen(!aboutPreviewOpen)}><span className="status-dot" />Sample visualization<Info size={14} /></button>
     </header>
 
-    {aboutPreviewOpen && <aside className="preview-popover" aria-label="About this preview"><button className="icon-button" aria-label="Close preview information" onClick={() => setAboutPreviewOpen(false)}><X size={16} /></button><h2>Real geography. Sample activity.</h2><p>Taller, brighter states show higher sample tick activity for the selected day. The raised birds and wind trails illustrate northbound migration, with exaggerated height. These are not observed tracks or measured wind. Live observations, contributing weather factors and health risk are not connected yet.</p></aside>}
+    {aboutPreviewOpen && <aside className="preview-popover" aria-label="About this preview"><button className="icon-button" aria-label="Close preview information" onClick={() => setAboutPreviewOpen(false)}><X size={16} /></button><h2>Real geography. Sample activity.</h2><p>Taller, darker states show higher sample tick activity; brighter green shows lower activity. Percentages are synthetic sample risk indices, not measured infestation or infection probabilities. Zoom in for county percentages; select a state for regional heatmaps. Birds and wind trails are illustrative. Live observations, weather and health risk are not connected yet.</p></aside>}
 
-    <button ref={mobileLayerTriggerRef} className="mobile-layer-trigger" aria-expanded={mobileLayersOpen} aria-controls="map-layers" onClick={() => setMobileLayersOpen(!mobileLayersOpen)}><Layers2 size={16} />Map layers<ChevronDown size={14} /></button>
-    <aside className={`layer-panel ${mobileLayersOpen ? 'layer-panel-is-open' : ''}`} id="map-layers" aria-label="Map layers and region selection">
-      <div className="layer-panel-heading"><h2>Explore the map</h2><button className="mobile-panel-close icon-button" aria-label="Close map layers" onClick={() => setMobileLayersOpen(false)}><PanelLeftClose size={17} /></button></div>
-      <label className="state-selector" htmlFor="state-selector"><Search size={15} /><select id="state-selector" ref={stateSelectorRef} aria-label="Choose a state" value={selectedStateCode ?? ''} onChange={(event) => { setSelectedStateCode(event.target.value || null); setMobileLayersOpen(false); }}><option value="">Choose a state</option>{states.map((state) => <option key={state.properties.code} value={state.properties.code}>{state.properties.name}</option>)}</select><ChevronDown size={13} /></label>
+    <button ref={layerPanelTriggerRef} className="layer-panel-trigger" aria-hidden={layerPanelOpen} inert={layerPanelOpen} aria-expanded={layerPanelOpen} aria-controls="map-layers" onClick={openLayerPanel}><Layers2 size={16} />Map layers<ChevronDown size={14} /></button>
+    <aside className="layer-panel" aria-hidden={!layerPanelOpen} inert={!layerPanelOpen} id="map-layers" aria-label="Map layers and region selection">
+      <div className="layer-panel-heading"><h2>Explore the map</h2><button className="layer-panel-close icon-button" aria-label="Minimize Explore the map" title="Minimize Explore the map" onClick={minimizeLayerPanel}><PanelLeftClose size={17} /></button></div>
+      <label className="state-selector" htmlFor="state-selector"><Search size={15} /><select id="state-selector" ref={stateSelectorRef} aria-label="Choose a state" value={selectedStateCode ?? ''} onChange={(event) => { setSelectedStateCode(event.target.value || null); if (window.innerWidth <= 760) setLayerPanelOpen(false); }}><option value="">Choose a state</option>{states.map((state) => <option key={state.properties.code} value={state.properties.code}>{state.properties.name}</option>)}</select><ChevronDown size={13} /></label>
       <div className="layer-section-label"><span>Layers</span><span>Preview</span></div>
       <div className="layer-options">
         {layerDefinitions.map((layer) => <label className={`layer-option ${visibleLayers[layer.id] ? 'layer-is-active' : ''}`} key={layer.id}>
@@ -72,7 +82,7 @@ export default function App() {
     </aside>
 
     <div className="map-legend" aria-label="Map legend">
-      {visibleLayers.tick_activity && <><span className="legend-title">{selectedState ? 'Sample regional activity' : 'Sample tick activity'}</span><div className="legend-ramp" /><div className="legend-labels"><span>Lower</span><span>Higher</span></div><span className="legend-state-height">{selectedState ? 'County borders · Zoom for towns' : 'Glow follows state height'}</span></>}
+      {visibleLayers.tick_activity && <><span className="legend-title">Sample tick risk</span><div className="legend-ramp legend-risk-ramp" /><div className="legend-labels"><span>Lower · Brighter</span><span>Higher · Darker</span></div><span className="legend-state-height">% = sample index · Not measured risk</span><span className="legend-state-height">{selectedState ? 'Regional heatmap · Zoom for towns' : 'Zoom for state → county percentages'}</span></>}
       {visibleLayers.bird_activity && <div className="legend-flyway legend-wind"><span aria-hidden="true">↑</span>Northbound sample wind</div>}
       {visibleLayers.pathogen_evidence && <div className="legend-flyway legend-coverage"><span />Coverage preview</div>}
       {visibleLayers.community_exposure && <div className="legend-flyway legend-community"><span />Community layer preview</div>}

@@ -4,12 +4,14 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { Focus, Minus, Plus } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { StateBoundaries, VisibleLayers } from '../data/mapTypes';
-import { buildDemoFrame, buildStateActivityFrame } from '../data/mapFrames';
-import { createMapStyle, createStateColorExpression, createStateHeightExpression } from './mapStyle';
+import { baseStateHeightMeters, buildDemoFrame, buildStateActivityFrame } from '../data/mapFrames';
+import { createMapStyle, createStateColorExpression, createStateHeightExpression, stateLabelOpacity, stateRiskLabelOpacity } from './mapStyle';
 import { MigrationLayer } from './MigrationLayer';
 import { buildRegionalPreview, getStateBounds } from '../data/regionFocus';
 import { buildElevatedActivity } from '../data/activityGlow';
 import { createActivityGlowImage } from './activityGlowImage';
+import { buildTickRiskLabels } from '../data/tickRiskLabels';
+import type { CountyLabelPoints } from '../data/tickRiskLabels';
 
 setWorkerUrl(workerUrl);
 
@@ -30,11 +32,33 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [boundaryStatus, setBoundaryStatus] = useState<string | null>(null);
+  const [countyLabelPoints, setCountyLabelPoints] = useState<CountyLabelPoints | null>(null);
+  const [countyLabelError, setCountyLabelError] = useState(false);
   const selectedState = useMemo(() => stateBoundaries.features.find((state) => state.properties.code === selectedStateCode), [stateBoundaries, selectedStateCode]);
   const regionalPreview = useMemo(() => selectedState ? buildRegionalPreview(selectedState, selectedDayIndex) : null, [selectedState, selectedDayIndex]);
 
   useEffect(() => { selectedDayRef.current = selectedDayIndex; }, [selectedDayIndex]);
   useEffect(() => { selectStateRef.current = onSelectState; }, [onSelectState]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    fetch('/data/county-labels.geojson', { signal: abortController.signal })
+      .then((response) => { if (!response.ok) throw new Error('County labels request failed.'); return response.json(); })
+      .then((data: CountyLabelPoints) => {
+        if (abortController.signal.aborted) return;
+        const stateFips = new Set(stateBoundaries.features.map((state) => state.properties.fips));
+        if (data.type !== 'FeatureCollection' || !Array.isArray(data.features) || !data.features.length
+          || !data.features.every((feature) => feature.geometry?.type === 'Point'
+            && feature.geometry.coordinates.length >= 2 && feature.geometry.coordinates.every(Number.isFinite)
+            && typeof feature.properties?.name === 'string' && typeof feature.properties.geoid === 'string'
+            && stateFips.has(feature.properties.state_fips))) {
+          throw new Error('Invalid county label geography.');
+        }
+        setCountyLabelPoints(data);
+      })
+      .catch(() => { if (!abortController.signal.aborted) setCountyLabelError(true); });
+    return () => abortController.abort();
+  }, [stateBoundaries]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -50,6 +74,8 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
         dragRotate: { around: 'center', movement: 'linear' }, dragPan: true, scrollZoom: true,
         pitchWithRotate: true, pitchSpeed: -0.35, rotateSpeed: 0.4,
         attributionControl: { compact: true },
+        // State/county sources declutter independently during the zoom crossfade.
+        crossSourceCollisions: false,
         canvasContextAttributes: { antialias: true },
       });
       mapRef.current = map;
@@ -90,9 +116,12 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     const stateActivity = buildStateActivityFrame(stateBoundaries, selectedDayIndex);
     (map.getSource('sample-activity') as GeoJSONSource).setData(regionalPreview?.hotspots ?? buildElevatedActivity(stateActivity, buildDemoFrame(selectedDayIndex).observations));
     (map.getSource('states') as GeoJSONSource).setData(stateActivity);
+    const riskLabels = buildTickRiskLabels(stateActivity, countyLabelPoints ?? { type: 'FeatureCollection', features: [] }, selectedDayIndex, selectedStateCode);
+    (map.getSource('state-label-points') as GeoJSONSource).setData(riskLabels.states);
+    (map.getSource('county-label-points') as GeoJSONSource).setData(riskLabels.counties);
     migrationLayerRef.current?.setRegionRoute(regionalPreview?.migrationRoute ?? null, !!selectedState);
     migrationLayerRef.current?.setFrame(0, selectedDayIndex);
-  }, [mapReady, selectedDayIndex, stateBoundaries, selectedState, regionalPreview]);
+  }, [mapReady, selectedDayIndex, stateBoundaries, selectedState, selectedStateCode, regionalPreview, countyLabelPoints]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -117,30 +146,30 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const layerGroups = {
-      bird_activity: [],
-      tick_activity: ['tick-activity-glow'], pathogen_evidence: ['pathogen-context'], community_exposure: [],
-    };
-    for (const [layerId, mapLayerIds] of Object.entries(layerGroups)) {
-      for (const mapLayerId of mapLayerIds) {
-        if (map.getLayer(mapLayerId)) map.setLayoutProperty(mapLayerId, 'visibility', visibleLayers[layerId as keyof VisibleLayers] ? 'visible' : 'none');
-      }
-    }
     migrationLayerRef.current?.setVisible(visibleLayers.bird_activity);
     const nationalColors = createStateColorExpression(visibleLayers.tick_activity, visibleLayers.community_exposure);
-    map.setPaintProperty('states-raised', 'fill-extrusion-color', selectedState
-      ? ['case', ['==', ['get', 'code'], selectedStateCode], '#344b35', '#1d3026'] : nationalColors);
-    map.setPaintProperty('states', 'fill-color', selectedState ? ['case', ['==', ['get', 'code'], selectedStateCode], '#344b35', '#1d3026'] : '#465b3f');
+    map.setPaintProperty('states-raised', 'fill-extrusion-color', nationalColors);
+    map.setPaintProperty('states', 'fill-color', selectedState ? ['case', ['==', ['get', 'code'], selectedStateCode], nationalColors, '#1d3026'] : '#465b3f');
     map.setLayoutProperty('states-raised', 'visibility', selectedState ? 'none' : 'visible');
     map.setPaintProperty('states-raised', 'fill-extrusion-height', regionalPreview?.platformHeightMeters ?? createStateHeightExpression(visibleLayers.tick_activity));
     map.setPaintProperty('land', 'fill-color', selectedState ? '#172820' : '#293e31');
-    map.setPaintProperty('state-outlines', 'line-opacity', selectedState ? 0.12 : 0.35);
+    for (const borderLayer of ['state-outlines', 'regional-county-borders', 'regional-town-borders', 'regional-town-names']) {
+      map.setLayoutProperty(borderLayer, 'visibility', selectedState ? 'visible' : 'none');
+    }
     map.setLayoutProperty('tick-activity-glow', 'icon-size', selectedState ? 0.85 : 0.95);
-    map.setLayoutProperty('state-labels', 'visibility', selectedState ? 'none' : 'visible');
-    map.setLayoutProperty('state-labels', 'symbol-height-offset', ['+', createStateHeightExpression(visibleLayers.tick_activity), 4000]);
+    map.setLayoutProperty('tick-activity-glow', 'visibility', selectedState && visibleLayers.tick_activity ? 'visible' : 'none');
+    map.setLayoutProperty('pathogen-context', 'visibility', selectedState && visibleLayers.pathogen_evidence ? 'visible' : 'none');
+    for (const labelLayer of ['state-labels', 'state-risk-labels', 'county-risk-labels']) {
+      map.setLayoutProperty(labelLayer, 'symbol-height-offset', visibleLayers.tick_activity ? ['get', 'display_height'] : selectedState ? 4000 : baseStateHeightMeters + 4000);
+    }
+    map.setLayoutProperty('county-risk-labels', 'text-field', ['get', visibleLayers.tick_activity ? 'label_with_risk' : 'name']);
+    map.setLayoutProperty('state-risk-labels', 'visibility', visibleLayers.tick_activity ? 'visible' : 'none');
+    map.setPaintProperty('state-labels', 'text-opacity', countyLabelPoints ? stateLabelOpacity : 0.95);
+    map.setPaintProperty('state-risk-labels', 'text-opacity', countyLabelPoints ? stateRiskLabelOpacity : ['interpolate', ['linear'], ['zoom'], 3.9, 0, 4.7, 0.95]);
+    map.setLayoutProperty('regional-county-names', 'visibility', selectedState && !countyLabelPoints ? 'visible' : 'none');
     map.setFilter('pathogen-context', selectedState ? ['==', ['get', 'code'], selectedStateCode] : ['in', ['get', 'code'], ['literal', ['NY', 'PA', 'MA', 'CT', 'WI', 'MN']]]);
     map.setFilter('selected-state-outline', ['==', ['get', 'code'], selectedStateCode ?? '']);
-  }, [mapReady, visibleLayers, selectedStateCode, selectedState, regionalPreview]);
+  }, [mapReady, visibleLayers, selectedStateCode, selectedState, regionalPreview, countyLabelPoints]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -193,6 +222,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     {!mapReady && !mapError && <div className="map-loading" role="status">Preparing your map…</div>}
     {mapError && <div className="map-fallback"><img src="/data/us-states-preview.svg" alt="United States state boundaries" /><p role="status">{mapError}</p></div>}
     {selectedState && boundaryStatus && <p className="regional-geography-status" role="status">{boundaryStatus}</p>}
+    {countyLabelError && <p className="regional-geography-status" role="status">County risk labels could not load. Refresh to retry.</p>}
     <div className="map-navigation" aria-label="Map navigation">
       <button aria-label="Zoom in" disabled={!mapReady || !!mapError} onClick={() => mapRef.current?.zoomIn()}><Plus size={18} /></button>
       <button aria-label="Zoom out" disabled={!mapReady || !!mapError} onClick={() => mapRef.current?.zoomOut()}><Minus size={18} /></button>
