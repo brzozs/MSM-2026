@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Map as MapLibreMap, GeoJSONSource, setWorkerUrl } from 'maplibre-gl';
-import type { ExpressionSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { Focus, Minus, Plus } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { MapViewMode, StateBoundaries, VisibleLayers } from '../data/mapTypes';
-import { buildDemoFrame, getBirdFeatures } from '../data/mapFrames';
-import { createMapStyle } from './mapStyle';
+import type { StateBoundaries, VisibleLayers } from '../data/mapTypes';
+import { buildDemoFrame, buildStateActivityFrame } from '../data/mapFrames';
+import { createMapStyle, createStateColorExpression, createStateHeightExpression } from './mapStyle';
+import { MigrationLayer } from './MigrationLayer';
+import { buildRegionalPreview, getStateBounds } from '../data/regionFocus';
+import { buildElevatedActivity } from '../data/activityGlow';
+import { createActivityGlowImage } from './activityGlowImage';
 
 setWorkerUrl(workerUrl);
 
@@ -15,31 +18,37 @@ interface MapCanvasProps {
   selectedStateCode: string | null;
   selectedDayIndex: number;
   visibleLayers: VisibleLayers;
-  viewMode: MapViewMode;
   onSelectState: (stateCode: string | null) => void;
 }
 
-export default function MapCanvas({ stateBoundaries, selectedStateCode, selectedDayIndex, visibleLayers, viewMode, onSelectState }: MapCanvasProps) {
+export default function MapCanvas({ stateBoundaries, selectedStateCode, selectedDayIndex, visibleLayers, onSelectState }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const selectedDayRef = useRef(selectedDayIndex);
   const selectStateRef = useRef(onSelectState);
+  const migrationLayerRef = useRef<MigrationLayer | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [boundaryStatus, setBoundaryStatus] = useState<string | null>(null);
+  const selectedState = useMemo(() => stateBoundaries.features.find((state) => state.properties.code === selectedStateCode), [stateBoundaries, selectedStateCode]);
+  const regionalPreview = useMemo(() => selectedState ? buildRegionalPreview(selectedState, selectedDayIndex) : null, [selectedState, selectedDayIndex]);
 
   useEffect(() => { selectedDayRef.current = selectedDayIndex; }, [selectedDayIndex]);
   useEffect(() => { selectStateRef.current = onSelectState; }, [onSelectState]);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    setMapReady(false);
     let map: MapLibreMap;
     let disposed = false;
     try {
       map = new MapLibreMap({
         container: containerRef.current,
         style: createMapStyle(stateBoundaries),
-        center: [-97, 37.7], zoom: 3.7, pitch: 42, bearing: -12,
+        center: [-97, 37.7], zoom: 3.7, pitch: 52, bearing: -12,
         minZoom: 1.2, maxZoom: 10, maxPitch: 65,
+        dragRotate: { around: 'center', movement: 'linear' }, dragPan: true, scrollZoom: true,
+        pitchWithRotate: true, pitchSpeed: -0.35, rotateSpeed: 0.4,
         attributionControl: { compact: true },
         canvasContextAttributes: { antialias: true },
       });
@@ -48,78 +57,103 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
       setMapError('The interactive map needs WebGL. You can still choose a state to explore the preview.');
       return;
     }
+    map.setMissingStyleImageResolver((imageId) => {
+      if (imageId === 'activity-glow' && !map.hasImage('activity-glow')) map.addImage('activity-glow', createActivityGlowImage(), { pixelRatio: 2 });
+    });
     map.on('load', () => {
       if (disposed) return;
-      const birdCanvas = document.createElement('canvas');
-      birdCanvas.width = 40; birdCanvas.height = 40;
-      const drawingContext = birdCanvas.getContext('2d');
-      if (drawingContext) {
-        drawingContext.fillStyle = '#e8edce';
-        drawingContext.beginPath();
-        drawingContext.moveTo(20, 7); drawingContext.lineTo(24, 18);
-        drawingContext.lineTo(37, 25); drawingContext.lineTo(23, 23);
-        drawingContext.lineTo(20, 32); drawingContext.lineTo(17, 23);
-        drawingContext.lineTo(3, 25); drawingContext.lineTo(16, 18);
-        drawingContext.closePath(); drawingContext.fill();
-        map.addImage('preview-bird', drawingContext.getImageData(0, 0, 40, 40), { pixelRatio: 2 });
-        map.addLayer({ id: 'migration-birds', type: 'symbol', source: 'sample-birds', layout: { 'icon-image': 'preview-bird', 'icon-size': 0.8, 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true } });
-      }
+      const migrationLayer = new MigrationLayer();
+      migrationLayerRef.current = migrationLayer;
+      map.addLayer(migrationLayer);
       setMapReady(true);
     });
-    map.on('click', 'states', (event) => {
-      const stateCode = event.features?.[0]?.properties.code;
+    const visibleStateLayer = () => map.getLayoutProperty('states-raised', 'visibility') === 'none' ? 'states' : 'states-raised';
+    map.on('click', (event) => {
+      if (!map.isStyleLoaded()) return;
+      const stateCode = map.queryRenderedFeatures(event.point, { layers: [visibleStateLayer()] })[0]?.properties.code;
       if (typeof stateCode === 'string') selectStateRef.current(stateCode);
     });
-    map.on('mouseenter', 'states', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'states', () => { map.getCanvas().style.cursor = ''; });
+    map.on('mousemove', (event) => { if (map.isStyleLoaded()) map.getCanvas().style.cursor = map.queryRenderedFeatures(event.point, { layers: [visibleStateLayer()] }).length ? 'pointer' : ''; });
+    map.on('mouseout', () => { map.getCanvas().style.cursor = ''; });
     map.on('webglcontextlost', () => {
       if (!disposed) setMapError('The map lost its graphics connection. Reload to restore it, or choose a state to preview.');
     });
     map.on('error', (event) => {
       if (!disposed && event.error.message.includes('countries.geojson')) setMapError('The base map could not load. Refresh the page to try again.');
     });
-    return () => { disposed = true; mapRef.current = null; map.remove(); };
+    return () => { disposed = true; mapRef.current = null; migrationLayerRef.current = null; map.remove(); };
   }, [stateBoundaries]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    (map.getSource('sample-activity') as GeoJSONSource).setData(buildDemoFrame(selectedDayIndex).observations);
-    (map.getSource('sample-birds') as GeoJSONSource).setData(getBirdFeatures(0, selectedDayIndex));
-  }, [mapReady, selectedDayIndex]);
+    const stateActivity = buildStateActivityFrame(stateBoundaries, selectedDayIndex);
+    (map.getSource('sample-activity') as GeoJSONSource).setData(regionalPreview?.hotspots ?? buildElevatedActivity(stateActivity, buildDemoFrame(selectedDayIndex).observations));
+    (map.getSource('states') as GeoJSONSource).setData(stateActivity);
+    migrationLayerRef.current?.setRegionRoute(regionalPreview?.migrationRoute ?? null, !!selectedState);
+    migrationLayerRef.current?.setFrame(0, selectedDayIndex);
+  }, [mapReady, selectedDayIndex, stateBoundaries, selectedState, regionalPreview]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const source = map.getSource('regional-boundaries') as GeoJSONSource;
+    source.setData({ type: 'FeatureCollection', features: [] });
+    if (!selectedState) { setBoundaryStatus(null); return; }
+    const abortController = new AbortController();
+    setBoundaryStatus('Loading county and town boundaries…');
+    fetch(`/data/regions/${selectedState.properties.fips}.geojson`, { signal: abortController.signal })
+      .then((response) => { if (!response.ok) throw new Error('Regional geography request failed.'); return response.json(); })
+      .then((data) => {
+        if (abortController.signal.aborted) return;
+        if (data.type !== 'FeatureCollection' || !Array.isArray(data.features)) throw new Error('Invalid regional geography.');
+        source.setData(data);
+        setBoundaryStatus(null);
+      })
+      .catch(() => { if (!abortController.signal.aborted) setBoundaryStatus('County and town boundaries could not load. Refresh to retry.'); });
+    return () => abortController.abort();
+  }, [mapReady, selectedState]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
     const layerGroups = {
-      bird_activity: ['migration-glow', 'migration-routes', 'migration-birds'],
-      tick_activity: ['tick-heatmap'], pathogen_evidence: ['pathogen-context'], community_exposure: [],
+      bird_activity: [],
+      tick_activity: ['tick-activity-glow'], pathogen_evidence: ['pathogen-context'], community_exposure: [],
     };
     for (const [layerId, mapLayerIds] of Object.entries(layerGroups)) {
       for (const mapLayerId of mapLayerIds) {
         if (map.getLayer(mapLayerId)) map.setLayoutProperty(mapLayerId, 'visibility', visibleLayers[layerId as keyof VisibleLayers] ? 'visible' : 'none');
       }
     }
-    const stateColor: ExpressionSpecification = ['case', ['==', ['get', 'code'], selectedStateCode ?? ''], '#829263', visibleLayers.community_exposure ? '#57766c' : '#465b3f'];
-    map.setPaintProperty('states', 'fill-color', stateColor);
-    map.setPaintProperty('states-raised', 'fill-extrusion-color', stateColor);
-  }, [mapReady, visibleLayers, selectedStateCode]);
+    migrationLayerRef.current?.setVisible(visibleLayers.bird_activity);
+    const nationalColors = createStateColorExpression(visibleLayers.tick_activity, visibleLayers.community_exposure);
+    map.setPaintProperty('states-raised', 'fill-extrusion-color', selectedState
+      ? ['case', ['==', ['get', 'code'], selectedStateCode], '#344b35', '#1d3026'] : nationalColors);
+    map.setPaintProperty('states', 'fill-color', selectedState ? ['case', ['==', ['get', 'code'], selectedStateCode], '#344b35', '#1d3026'] : '#465b3f');
+    map.setLayoutProperty('states-raised', 'visibility', selectedState ? 'none' : 'visible');
+    map.setPaintProperty('states-raised', 'fill-extrusion-height', regionalPreview?.platformHeightMeters ?? createStateHeightExpression(visibleLayers.tick_activity));
+    map.setPaintProperty('land', 'fill-color', selectedState ? '#172820' : '#293e31');
+    map.setPaintProperty('state-outlines', 'line-opacity', selectedState ? 0.12 : 0.35);
+    map.setLayoutProperty('tick-activity-glow', 'icon-size', selectedState ? 0.85 : 0.95);
+    map.setLayoutProperty('state-labels', 'visibility', selectedState ? 'none' : 'visible');
+    map.setLayoutProperty('state-labels', 'symbol-height-offset', ['+', createStateHeightExpression(visibleLayers.tick_activity), 4000]);
+    map.setFilter('pathogen-context', selectedState ? ['==', ['get', 'code'], selectedStateCode] : ['in', ['get', 'code'], ['literal', ['NY', 'PA', 'MA', 'CT', 'WI', 'MN']]]);
+    map.setFilter('selected-state-outline', ['==', ['get', 'code'], selectedStateCode ?? '']);
+  }, [mapReady, visibleLayers, selectedStateCode, selectedState, regionalPreview]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    map.setProjection({ type: viewMode === 'globe' ? 'globe' : 'mercator' });
-    map.setLayoutProperty('states-raised', 'visibility', viewMode === 'perspective' ? 'visible' : 'none');
-    fitNationalView(map, viewMode);
-  }, [mapReady, viewMode]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !selectedStateCode) return;
-    const state = stateBoundaries.features.find((feature) => feature.properties.code === selectedStateCode);
-    if (!state) return;
-    map.flyTo({ center: state.properties.center, zoom: 5.2, pitch: viewMode === 'perspective' ? 38 : 0, padding: window.innerWidth > 760 ? { top: 70, bottom: 100, left: 250, right: 360 } : { top: 100, bottom: 340, left: 20, right: 20 }, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 900 });
-  }, [mapReady, selectedStateCode, stateBoundaries, viewMode]);
+    if (selectedState) {
+      map.fitBounds(getStateBounds(selectedState), {
+        absolutePadding: true, maxZoom: 10, pitch: 42, bearing: -12,
+        padding: map.getContainer().clientWidth > 760
+          ? { top: 175, bottom: 195, left: 300, right: 75 } : { top: 190, bottom: 210, left: 36, right: 36 },
+        duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300,
+      });
+    } else fitNationalView(map);
+  }, [mapReady, selectedState]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -130,13 +164,18 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     const startTime = performance.now();
     const animateBirds = (timestamp: number) => {
       if (document.hidden || motionPreference.matches) return;
-      if (timestamp - lastUpdate > 70) {
-        (map.getSource('sample-birds') as GeoJSONSource).setData(getBirdFeatures((timestamp - startTime) / 1000, selectedDayRef.current));
+      if (timestamp - lastUpdate > 33) {
+        const elapsedSeconds = (timestamp - startTime) / 1000;
+        migrationLayerRef.current?.setFrame(elapsedSeconds, selectedDayRef.current);
         lastUpdate = timestamp;
       }
       animationFrameId = requestAnimationFrame(animateBirds);
     };
-    const resumeAnimation = () => { cancelAnimationFrame(animationFrameId); if (!document.hidden && !motionPreference.matches) animationFrameId = requestAnimationFrame(animateBirds); };
+    const resumeAnimation = () => {
+      cancelAnimationFrame(animationFrameId);
+      if (motionPreference.matches) migrationLayerRef.current?.setFrame(0, selectedDayRef.current);
+      else if (!document.hidden) animationFrameId = requestAnimationFrame(animateBirds);
+    };
     resumeAnimation();
     document.addEventListener('visibilitychange', resumeAnimation);
     motionPreference.addEventListener('change', resumeAnimation);
@@ -145,13 +184,15 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
 
   function resetView() {
     onSelectState(null);
-    if (mapRef.current) fitNationalView(mapRef.current, viewMode);
+    if (!selectedStateCode && mapRef.current) fitNationalView(mapRef.current);
   }
 
   return <>
     <div className="map-canvas" ref={containerRef} aria-label="Interactive ecological map of the United States" />
+    <p className="map-drag-hint">Right-drag to tilt + rotate<br /><span>Left-drag to pan · Scroll to zoom</span></p>
     {!mapReady && !mapError && <div className="map-loading" role="status">Preparing your map…</div>}
     {mapError && <div className="map-fallback"><img src="/data/us-states-preview.svg" alt="United States state boundaries" /><p role="status">{mapError}</p></div>}
+    {selectedState && boundaryStatus && <p className="regional-geography-status" role="status">{boundaryStatus}</p>}
     <div className="map-navigation" aria-label="Map navigation">
       <button aria-label="Zoom in" disabled={!mapReady || !!mapError} onClick={() => mapRef.current?.zoomIn()}><Plus size={18} /></button>
       <button aria-label="Zoom out" disabled={!mapReady || !!mapError} onClick={() => mapRef.current?.zoomOut()}><Minus size={18} /></button>
@@ -160,15 +201,11 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   </>;
 }
 
-function fitNationalView(map: MapLibreMap, viewMode: MapViewMode) {
+function fitNationalView(map: MapLibreMap) {
   const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 650;
-  if (viewMode === 'globe') {
-    map.easeTo({ center: [-97, 37.7], zoom: 1.7, pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration });
-    return;
-  }
   map.fitBounds([[-126, 24], [-66, 50]], {
     absolutePadding: true,
-    padding: window.innerWidth > 760 ? { top: 120, bottom: 160, left: 280, right: 65 } : { top: 180, bottom: 210, left: 24, right: 24 },
-    pitch: viewMode === 'perspective' ? 42 : 0, bearing: viewMode === 'perspective' ? -12 : 0, duration,
+    padding: window.innerWidth > 760 ? { top: 120, bottom: 140, left: 280, right: 65 } : { top: 140, bottom: 155, left: 24, right: 24 },
+    pitch: 52, bearing: -12, duration,
   });
 }
