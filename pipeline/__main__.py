@@ -40,9 +40,11 @@ def main(arguments=None, generated_at=None):
         locations = validate_sampling_locations(json.loads(options.locations.read_text()) if options.locations is not None
             else generate_sampling_locations(boundaries, options.region, options.grid_spacing_km))
         api_key = load_ebird_api_key(PACKAGE_DIRECTORY / ".env.local")
+        # Pin one UTC forecast window at run start so a run crossing midnight stays consistent.
+        forecast_start_date = clock().date()
         collect_weather = partial(fetch_weather_grid, cache_directory=options.output.parent / "weather-cache", clock=clock,
             progress_callback=lambda message: print(message, flush=True))
-        weather = _retrieve_source(collect_weather, clock, locations, options.forecast_days)
+        weather = _retrieve_source(collect_weather, clock, locations, forecast_start_date, options.forecast_days)
         birds = _retrieve_source(fetch_bird_observations, clock, options.region, api_key)
         bounds = [min(location["longitude"] for location in locations), min(location["latitude"] for location in locations),
                   max(location["longitude"] for location in locations), max(location["latitude"] for location in locations)]
