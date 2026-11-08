@@ -16,3 +16,12 @@
 
 # Runtime logs
 *.log
+
+# Web dependencies and build output
+web/node_modules/
+web/dist/
+web/public/data/ecology/
+
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/
