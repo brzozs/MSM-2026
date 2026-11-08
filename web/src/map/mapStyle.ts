@@ -40,7 +40,7 @@ export function createMapStyle(stateBoundaries: StateBoundaries): StyleSpecifica
       'sample-activity': { type: 'geojson', data: buildElevatedActivity(stateActivity, initialFrame.observations) },
       'regional-boundaries': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       'state-label-points': { type: 'geojson', data: initialLabels.states },
-      'county-label-points': { type: 'geojson', data: initialLabels.counties },
+      'county-label-points': { type: 'geojson', data: initialLabels.counties, promoteId: 'geoid' },
     },
     layers: [
       { id: 'ocean', type: 'background', paint: { 'background-color': '#142522' } },

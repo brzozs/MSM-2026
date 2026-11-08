@@ -30,7 +30,9 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   const selectedDayRef = useRef(selectedDayIndex);
   const selectStateRef = useRef(onSelectState);
   const migrationLayerRef = useRef<MigrationLayer | null>(null);
+  const previousLabelGeometryRef = useRef<{ stateCode: string | null; counties: CountyLabelPoints | null; boundaries: FeatureCollection | null } | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapGeneration, setMapGeneration] = useState(0);
   const [mapError, setMapError] = useState<string | null>(null);
   const [boundaryStatus, setBoundaryStatus] = useState<string | null>(null);
   const [countyLabelPoints, setCountyLabelPoints] = useState<CountyLabelPoints | null>(null);
@@ -41,6 +43,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   const stateActivity = useMemo(() => buildStateActivityFrame(stateBoundaries, selectedDayIndex), [stateBoundaries, selectedDayIndex]);
   const selectedState = useMemo(() => stateBoundaries.features.find((state) => state.properties.code === selectedStateCode), [stateBoundaries, selectedStateCode]);
   const regionalPreview = useMemo(() => selectedState ? buildRegionalPreview(selectedState, selectedDayIndex) : null, [selectedState, selectedDayIndex]);
+  const regionalBoundaries = regionalGeography?.stateCode === selectedStateCode ? regionalGeography.boundaries : null;
 
   useEffect(() => { selectedDayRef.current = selectedDayIndex; }, [selectedDayIndex]);
   useEffect(() => { selectStateRef.current = onSelectState; }, [onSelectState]);
@@ -68,6 +71,8 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   useEffect(() => {
     if (!containerRef.current) return;
     setMapReady(false);
+    setMapError(null);
+    previousLabelGeometryRef.current = null;
     let map: MapLibreMap;
     let disposed = false;
     try {
@@ -107,13 +112,18 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     map.on('mousemove', (event) => { if (map.isStyleLoaded()) map.getCanvas().style.cursor = map.queryRenderedFeatures(event.point, { layers: [visibleStateLayer()] }).length ? 'pointer' : ''; });
     map.on('mouseout', () => { map.getCanvas().style.cursor = ''; });
     map.on('webglcontextlost', () => {
-      if (!disposed) setMapError('The map lost its graphics connection. Reload to restore it, or choose a state to preview.');
+      if (disposed) return;
+      setMapReady(false);
+      setMapError('The map lost its graphics connection. Waiting for graphics to recover; you can still choose a state.');
+    });
+    map.on('webglcontextrestored', () => {
+      if (!disposed) setMapGeneration((currentGeneration) => currentGeneration + 1);
     });
     map.on('error', (event) => {
       if (!disposed && event.error.message.includes('countries.geojson')) setMapError('The base map could not load. Refresh the page to try again.');
     });
     return () => { disposed = true; mapRef.current = null; migrationLayerRef.current = null; map.remove(); };
-  }, [stateBoundaries]);
+  }, [stateBoundaries, mapGeneration]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -127,12 +137,31 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const boundaries = regionalGeography?.stateCode === selectedStateCode ? regionalGeography.boundaries : null;
     const riskLabels = buildTickRiskLabels(stateActivity, countyLabelPoints ?? { type: 'FeatureCollection', features: [] }, selectedDayIndex, selectedStateCode);
     (map.getSource('state-label-points') as GeoJSONSource).setData(riskLabels.states);
-    (map.getSource('county-label-points') as GeoJSONSource).setData(buildRegionalLabelSource(riskLabels.counties, boundaries));
-    (map.getSource('regional-boundaries') as GeoJSONSource).setData(boundaries ?? { type: 'FeatureCollection', features: [] });
-  }, [mapReady, selectedDayIndex, stateActivity, selectedStateCode, countyLabelPoints, regionalGeography]);
+    const countySource = map.getSource('county-label-points') as GeoJSONSource;
+    const previousGeometry = previousLabelGeometryRef.current;
+    if (previousGeometry && previousGeometry.stateCode === selectedStateCode
+      && previousGeometry.counties === countyLabelPoints && previousGeometry.boundaries === regionalBoundaries) {
+      // Dates change county values, not the megabytes of shared city geometry.
+      void countySource.updateData({ update: riskLabels.counties.features.map((county) => ({
+        id: county.properties.geoid,
+        addOrUpdateProperties: [
+          { key: 'sample_risk_percent', value: county.properties.sample_risk_percent },
+          { key: 'display_height', value: county.properties.display_height },
+        ],
+      })) }).catch(() => setCountyLabelError(true));
+    } else {
+      countySource.setData(buildRegionalLabelSource(riskLabels.counties, regionalBoundaries));
+      previousLabelGeometryRef.current = { stateCode: selectedStateCode, counties: countyLabelPoints, boundaries: regionalBoundaries };
+    }
+  }, [mapReady, selectedDayIndex, stateActivity, selectedStateCode, countyLabelPoints, regionalBoundaries]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    (map.getSource('regional-boundaries') as GeoJSONSource).setData(regionalBoundaries ?? { type: 'FeatureCollection', features: [] });
+  }, [mapReady, regionalBoundaries]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -207,6 +236,8 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     const map = mapRef.current;
     if (!map || !mapReady || regionalFocusZoom === null) return;
     const updateRegionalDetail = () => setShowCityNames(map.getZoom() > regionalFocusZoom + 0.1);
+    // A zero-duration fit can finish before this listener is attached.
+    if (!map.isMoving()) updateRegionalDetail();
     map.on('zoomend', updateRegionalDetail);
     return () => { map.off('zoomend', updateRegionalDetail); };
   }, [mapReady, regionalFocusZoom]);
