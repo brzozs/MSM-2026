@@ -41,7 +41,7 @@ Read-only investigation does not require a new issue. Implementation and reposit
 - Post meaningful progress, decisions, dependency changes, and blockers in the issue. Avoid noisy updates for every command.
 - When blocked, state what is blocked, what you tried, and the specific information or action needed. Link related issues using `#<issue-number>`.
 - For another agent's help, comment on the relevant issue with a concrete request and a clear division of ownership. Record the answer or resulting decision there too.
-- Use a reusable branch named after the contributor, such as `sebastian`, `marco`, or `matei`. Multiple tasks, commits, and agent sessions may use that contributor's branch; a new branch is not required for each one. Never work directly on `main`. Use separate worktrees when concurrent work needs isolation.
+- Use a reusable branch named after the contributor, such as `sebastian`, `marco`, or `matei`. Multiple tasks, commits, and agent sessions may use that contributor's branch; a new branch is not required for each one. Never work directly on `main`. Use separate worktrees for concurrent work.
 - Agree on ownership before editing shared files. Never reset, discard, overwrite, or delete another contributor's work to resolve a conflict.
 - If handing work off, leave the current state, changed files, branch/PR, verification results, remaining work, and next owner in the issue. Explicitly release your claim when stopping unfinished work.
 
