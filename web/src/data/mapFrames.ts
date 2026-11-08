@@ -28,7 +28,7 @@ const activityCenters = [
   [-84, 33], [-87, 36], [-90, 34], [-92, 39], [-89, 43],
   [-84, 42], [-97, 32], [-100, 38], [-105, 40], [-121, 39], [-122, 45],
 ];
-const migrationRoutes: readonly MigrationRoute[] = [
+export const migrationRoutes: readonly MigrationRoute[] = [
   [[-82, 26, 460000], [-83, 38, 640000], [-71, 47, 460000]],
   [[-96, 27, 460000], [-89, 37, 640000], [-92, 49, 460000]],
   [[-104, 29, 460000], [-107, 38, 640000], [-105, 49, 460000]],
@@ -101,11 +101,11 @@ export function buildStateActivityFrame(stateBoundaries: StateBoundaries, select
   };
 }
 
-export function getBirdFeatures(elapsedSeconds: number, selectedDayIndex: number, routes: readonly MigrationRoute[] = migrationRoutes): FeatureCollection<Point, DemoBirdProperties> {
+export function getBirdFeatures(elapsedSeconds: number, routes: readonly MigrationRoute[] = migrationRoutes): FeatureCollection<Point, DemoBirdProperties> {
   return {
     type: 'FeatureCollection',
     features: routes.flatMap((route, routeIndex) => Array.from({ length: flocksPerRoute }, (_, flockIndex) => flockFormation.map(([flockSide, flockRank], birdIndex) => {
-      const progress = (elapsedSeconds * 0.022 + flockIndex / flocksPerRoute + selectedDayIndex * 0.045 + routeIndex * 0.21) % 1;
+      const progress = (elapsedSeconds * 0.022 + flockIndex / flocksPerRoute + routeIndex * 0.21) % 1;
       const position = getMigrationRoutePosition(routeIndex, progress, routes);
       const nextPosition = routePosition(route, Math.min(1, progress + 0.001));
       return {

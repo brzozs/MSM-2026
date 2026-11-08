@@ -6,8 +6,8 @@ export type StateBoundaries = FeatureCollection<Polygon | MultiPolygon, StatePro
 export type VisibleLayers = Record<EcologicalLayerId, boolean>;
 
 export const layerDefinitions: { id: EcologicalLayerId; label: string; description: string; color: string }[] = [
-  { id: 'bird_activity', label: 'Bird migration', description: 'Northbound flocks + wind', color: '#ccdbaf' },
-  { id: 'tick_activity', label: 'Tick activity', description: 'Sample activity surface', color: '#e8b66e' },
-  { id: 'pathogen_evidence', label: 'Pathogen context', description: 'Coverage preview', color: '#c3a6a1' },
-  { id: 'community_exposure', label: 'Community exposure', description: 'Layer preview', color: '#94b4bd' },
+  { id: 'bird_activity', label: 'Bird migration', description: 'Sightings + seasonal flight guide', color: '#ccdbaf' },
+  { id: 'tick_activity', label: 'Tick activity', description: 'Weather-based suitability', color: '#e8b66e' },
+  { id: 'pathogen_evidence', label: 'Pathogen context', description: 'Source not connected', color: '#c3a6a1' },
+  { id: 'community_exposure', label: 'Community exposure', description: 'Source not connected', color: '#94b4bd' },
 ];

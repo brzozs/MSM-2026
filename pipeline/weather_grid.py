@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .model import MODEL_VERSION
@@ -21,7 +21,7 @@ def _encoded_json(payload):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
-def _load_cached_weather(cache_path, fingerprint, locations, forecast_days, retrieved_at):
+def _load_cached_weather(cache_path, fingerprint, locations, forecast_start_date, forecast_days, retrieved_at):
     try:
         document = json.loads(cache_path.read_text())
         if not isinstance(document, dict) or document.get("cache_version") != 1 or document.get("request_fingerprint") != fingerprint:
@@ -33,6 +33,8 @@ def _load_cached_weather(cache_path, fingerprint, locations, forecast_days, retr
         if cached_time.tzinfo is None or not 0 <= (retrieved_at - cached_time).total_seconds() <= CACHE_LIFETIME_SECONDS:
             return None
         if source.get("status") != "available" or source.get("provider") != "open_meteo" or len(source["locations"]) != len(locations):
+            return None
+        if source.get("forecast_start_date") != forecast_start_date.isoformat():
             return None
         for cached_location, requested_location in zip(source["locations"], locations):
             if cached_location["id"] != requested_location["id"] or len(cached_location["hours"]) != forecast_days * 24:
@@ -57,9 +59,11 @@ def _save_cached_weather(cache_path, fingerprint, source):
             temporary_path.unlink()
 
 
-def fetch_weather_grid(locations, forecast_days, retrieved_at, requester=None, cache_directory=None, progress_callback=None, clock=None):
+def fetch_weather_grid(locations, forecast_start_date, forecast_days, retrieved_at, requester=None, cache_directory=None, progress_callback=None, clock=None):
     if not 1 <= len(locations) <= MAXIMUM_GRID_LOCATIONS:
         raise ValueError("A refresh may contain at most 4500 weather locations; select a state or a coarser national grid")
+    if type(forecast_start_date) is not date:
+        raise ValueError("Weather grid requires a pinned UTC forecast_start_date (datetime.date)")
     clock = clock or (lambda: datetime.now(timezone.utc))
     results = []
     cache_hits = 0
@@ -70,9 +74,9 @@ def fetch_weather_grid(locations, forecast_days, retrieved_at, requester=None, c
     for batch_index, offset in enumerate(range(0, len(locations), MAXIMUM_BATCH_LOCATIONS)):
         batch = locations[offset:offset + MAXIMUM_BATCH_LOCATIONS]
         fingerprint = hashlib.sha256(_encoded_json({"model_version": MODEL_VERSION, "fields": list(WEATHER_FIELDS),
-            "date": retrieved_at.astimezone(timezone.utc).date().isoformat(), "forecast_days": forecast_days, "locations": batch})).hexdigest()
+            "forecast_start_date": forecast_start_date.isoformat(), "forecast_days": forecast_days, "locations": batch})).hexdigest()
         cache_path = Path(cache_directory) / f"{fingerprint}.json" if cache_directory is not None else None
-        source = _load_cached_weather(cache_path, fingerprint, batch, forecast_days, clock()) if cache_path is not None else None
+        source = _load_cached_weather(cache_path, fingerprint, batch, forecast_start_date, forecast_days, clock()) if cache_path is not None else None
         if source is not None:
             cache_hits += 1
             source_mode = "cached"
@@ -84,7 +88,7 @@ def fetch_weather_grid(locations, forecast_days, retrieved_at, requester=None, c
             previous_request_started = time.monotonic()
             previous_request_locations = len(batch)
             batch_started_at = clock()
-            source = fetch_weather(batch, forecast_days, batch_started_at, requester=requester)
+            source = fetch_weather(batch, forecast_start_date, forecast_days, batch_started_at, requester=requester)
             source["request_started_at"] = utc_timestamp(batch_started_at)
             source["retrieved_at"] = utc_timestamp(clock())
             if cache_path is not None:

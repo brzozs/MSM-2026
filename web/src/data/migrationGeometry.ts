@@ -58,9 +58,9 @@ export function buildWindGeometry(radiusMeters: number, routes?: readonly Migrat
   return new Float32Array(vertices);
 }
 
-export function buildBirdGeometry(elapsedSeconds: number, selectedDayIndex: number, modelScaleMeters: number, routes?: readonly MigrationRoute[]): Float32Array {
+export function buildBirdGeometry(elapsedSeconds: number, modelScaleMeters: number, routes?: readonly MigrationRoute[], flightElapsedSeconds = elapsedSeconds): Float32Array {
   const vertices: number[] = [];
-  for (const bird of getBirdFeatures(elapsedSeconds, selectedDayIndex, routes).features) {
+  for (const bird of getBirdFeatures(flightElapsedSeconds, routes).features) {
     const [longitude, latitude, altitude] = bird.geometry.coordinates;
     const bearing = bird.properties.bearing * Math.PI / 180;
     const wingAngle = Math.sin(elapsedSeconds * 9 + bird.properties.wing_phase * Math.PI * 2 / birdWingPhaseCount) * 0.7;

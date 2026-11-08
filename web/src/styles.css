@@ -171,3 +171,11 @@ select option { color: #edf0dc; background: #20362a; }
 
 .legend-coverage > span { border-color: #c3a6a1; }
 .legend-community > span { border-color: #94b4bd; }
+
+.ecology-data-status { position: absolute; top: 108px; left: 50%; transform: translateX(-50%); z-index: 4; max-width: min(600px, 85%); margin: 0; padding: 9px 13px; border-radius: 6px; background: #20382bef; border: 1px solid var(--border); color: #e5d6ad; font-size: 10px; line-height: 1.6; }
+.layer-option:has(input:disabled) { opacity: 0.5; cursor: default; }
+.preview-popover p + p { margin-top: 10px; }
+@media (max-width: 760px) {
+  .ecology-data-status { top: 145px; width: calc(100% - 36px); max-width: none; font-size: 9px; }
+  .state-is-focused .ecology-data-status { top: 210px; }
+}

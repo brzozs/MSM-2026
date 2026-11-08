@@ -19,7 +19,7 @@ test('every sample wind route travels north and stays above the tallest state bl
 });
 
 test('bird and wind meshes contain finite 3D triangles with bounded colors and altitude', () => {
-  for (const geometry of [buildWindGeometry(10000), buildBirdGeometry(0, 3, 20000), buildBirdGeometry(0.2, 3, 20000)]) {
+  for (const geometry of [buildWindGeometry(10000), buildBirdGeometry(0, 20000), buildBirdGeometry(0.2, 20000)]) {
     assert.equal(geometry.length % (migrationVertexStride * 3), 0);
     assert.ok(geometry.length > 0 && geometry.length < 1000000);
     for (let offset = 0; offset < geometry.length; offset += migrationVertexStride) {
@@ -30,8 +30,8 @@ test('bird and wind meshes contain finite 3D triangles with bounded colors and a
       for (let colorIndex = 3; colorIndex <= 6; colorIndex += 1) assert.ok(geometry[offset + colorIndex] >= 0 && geometry[offset + colorIndex] <= 1);
     }
   }
-  const startingBirds = buildBirdGeometry(0, 3, 20000);
-  const flappingBirds = buildBirdGeometry(0.2, 3, 20000);
+  const startingBirds = buildBirdGeometry(0, 20000);
+  const flappingBirds = buildBirdGeometry(0.2, 20000);
   assert.notDeepEqual(startingBirds, flappingBirds);
   const altitudes = Array.from(startingBirds).filter((_, index) => index % migrationVertexStride === 2);
   assert.ok(Math.max(...altitudes) - Math.min(...altitudes) > 50000);

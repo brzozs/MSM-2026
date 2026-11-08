@@ -1,6 +1,7 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { buildBirdGeometry, buildWindGeometry, migrationVertexStride } from '../data/migrationGeometry';
-import type { MigrationRoute } from '../data/mapFrames';
+import { migrationRoutes, type MigrationRoute } from '../data/mapFrames';
+import { orientSeasonalRoutes, type SeasonalMigrationDirection } from '../data/seasonalMigration';
 
 interface MeshBuffer { buffer: WebGLBuffer; vertexArray: WebGLVertexArrayObject; vertexCount: number }
 interface ShaderProgram { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> }
@@ -14,20 +15,28 @@ export class MigrationLayer implements CustomLayerInterface {
   private birdBuffer: MeshBuffer | null = null;
   private programs = new Map<string, ShaderProgram>();
   private elapsedSeconds = 0;
-  private selectedDayIndex = 3;
   private visible = true;
   private windRadiusMeters = 0;
-  private routes: readonly MigrationRoute[] | undefined;
+  private baseRoutes: readonly MigrationRoute[] = migrationRoutes;
+  private seasonalDirection: SeasonalMigrationDirection = null;
+  private routes: readonly MigrationRoute[] = [];
 
   setRegionRoute(route: MigrationRoute | null, regionalFocus: boolean) {
-    this.routes = regionalFocus ? (route ? [route] : []) : undefined;
+    this.baseRoutes = regionalFocus ? (route ? [route] : []) : migrationRoutes;
+    this.routes = orientSeasonalRoutes(this.baseRoutes, this.seasonalDirection);
     this.windRadiusMeters = 0;
     this.map?.triggerRepaint();
   }
 
-  setFrame(elapsedSeconds: number, selectedDayIndex: number) {
+  setSeasonalDirection(direction: SeasonalMigrationDirection) {
+    this.seasonalDirection = direction;
+    this.routes = orientSeasonalRoutes(this.baseRoutes, direction);
+    this.windRadiusMeters = 0;
+    this.map?.triggerRepaint();
+  }
+
+  setFrame(elapsedSeconds: number) {
     this.elapsedSeconds = elapsedSeconds;
-    this.selectedDayIndex = selectedDayIndex;
     this.map?.triggerRepaint();
   }
 
@@ -69,7 +78,7 @@ export class MigrationLayer implements CustomLayerInterface {
     gl.bindVertexArray(this.windBuffer.vertexArray);
     gl.drawArrays(gl.TRIANGLES, 0, this.windBuffer.vertexCount);
 
-    uploadMesh(gl, this.birdBuffer, buildBirdGeometry(this.elapsedSeconds, this.selectedDayIndex, modelScaleMeters * 0.35, this.routes), gl.DYNAMIC_DRAW);
+    uploadMesh(gl, this.birdBuffer, buildBirdGeometry(this.elapsedSeconds, modelScaleMeters * 0.35, this.routes), gl.DYNAMIC_DRAW);
     gl.depthMask(true);
     gl.bindVertexArray(this.birdBuffer.vertexArray);
     gl.drawArrays(gl.TRIANGLES, 0, this.birdBuffer.vertexCount);

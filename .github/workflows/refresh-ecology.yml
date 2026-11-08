@@ -1,0 +1,81 @@
+name: Refresh ecology data and site
+
+on:
+  schedule:
+    - cron: '17 6,18 * * *'
+      timezone: America/New_York
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecology-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install and verify application
+        run: |
+          npm --prefix web ci
+          npm --prefix web test
+          npm --prefix web run typecheck
+          python3 -m unittest discover -s pipeline/tests -q
+      - name: Read Pages configuration
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Collect current national ecology data
+        env:
+          EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$EBIRD_API_KEY" ]; then
+            echo '::error::Add the backend-only EBIRD_API_KEY repository secret before activating refreshes.'
+            exit 1
+          fi
+          set +e
+          python3 -u -m pipeline --region US --output pipeline/output/latest.json
+          refresh_exit_code=$?
+          set -e
+          case "$refresh_exit_code" in
+            0) ;;
+            2) echo '::warning::Usable data published with explicit partial/unavailable observation sources.' ;;
+            *) echo '::error::Collection failed. The previously deployed site remains available.'; exit 1 ;;
+          esac
+      - name: Stage public data and build the site
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          python3 -m pipeline.publish
+          npm --prefix web run build -- --base "${PAGES_BASE_PATH}/"
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish the successful refresh
+        id: deployment
+        uses: actions/deploy-pages@v4

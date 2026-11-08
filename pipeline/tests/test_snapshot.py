@@ -4,6 +4,8 @@ import json
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+import urllib.parse
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +16,7 @@ from pipeline.tests.test_sources import LOCATIONS, NOW, TEST_TOKEN, bird_record,
 
 
 def live_shaped_inputs():
-    weather = fetch_weather(LOCATIONS, 7, NOW, requester=lambda *args, **kwargs: weather_response(7))
+    weather = fetch_weather(LOCATIONS, NOW.date(), 7, NOW, requester=lambda *args, **kwargs: weather_response(7))
     birds = {"provider": "ebird", "status": "available", "retrieved_at": "2026-11-07T23:00:00Z",
              "window_complete": False, "observations": normalize_ebird_records([bird_record()], "amerob")[0],
              "credentials": {"X-eBirdApiToken": TEST_TOKEN}}
@@ -121,6 +123,30 @@ class SnapshotContractTests(unittest.TestCase):
                  patch("pipeline.__main__.load_ebird_api_key", return_value=TEST_TOKEN), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 self.assertEqual(main(arguments, generated_at=NOW), 2)
+
+    def test_a_run_crossing_utc_midnight_publishes_the_window_pinned_at_start(self):
+        _, birds, ticks = live_shaped_inputs()
+        before_midnight = datetime(2026, 11, 7, 23, 59, 50, tzinfo=timezone.utc)
+        after_midnight = datetime(2026, 11, 8, 0, 0, 30, tzinfo=timezone.utc)
+        clock_readings = iter([before_midnight])
+        requested_windows = []
+        def weather_request(url, headers=None):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            requested_windows.append((query["start_date"][0], query["end_date"][0]))
+            return weather_response(7)
+        with tempfile.TemporaryDirectory() as directory:
+            locations_path = Path(directory) / "locations.json"
+            locations_path.write_text(json.dumps(LOCATIONS))
+            output_path = Path(directory) / "latest.json"
+            with patch("pipeline.__main__.datetime") as mocked_datetime,                  patch("pipeline.sources.request_json", side_effect=weather_request),                  patch("pipeline.__main__.fetch_bird_observations", return_value=birds),                  patch("pipeline.__main__.fetch_tick_observations", return_value=ticks),                  patch("pipeline.__main__.load_ebird_api_key", return_value=TEST_TOKEN),                  redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                mocked_datetime.now.side_effect = lambda tz=None: next(clock_readings, after_midnight)
+                result = main(["--locations", str(locations_path), "--output", str(output_path)])
+            self.assertEqual(result, 0)
+            self.assertEqual(requested_windows, [("2026-11-07", "2026-11-13")])
+            published = json.loads(output_path.read_text())
+            self.assertEqual(published["generated_at"], "2026-11-08T00:00:30Z")
+            self.assertEqual([frame["date"] for frame in published["frames"]][0], "2026-11-07")
+            self.assertEqual(published["sources"]["weather"]["forecast_start_date"], "2026-11-07")
 
     def test_weather_failure_preserves_existing_output_and_redacts_errors(self):
         with tempfile.TemporaryDirectory() as directory:

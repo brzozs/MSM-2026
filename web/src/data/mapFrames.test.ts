@@ -62,8 +62,8 @@ test('state activity preserves every real boundary and marks bounded, changing v
 });
 
 test('illustrative bird markers move along bounded routes with finite bearings', () => {
-  const startingBirds = getBirdFeatures(0, 3);
-  const laterBirds = getBirdFeatures(12, 3);
+  const startingBirds = getBirdFeatures(0);
+  const laterBirds = getBirdFeatures(12);
   assert.equal(startingBirds.features.length, migrationRouteCount * flocksPerRoute * birdsPerFlock);
   assert.notDeepEqual(startingBirds, laterBirds);
   for (const feature of laterBirds.features) {
@@ -76,7 +76,7 @@ test('illustrative bird markers move along bounded routes with finite bearings',
 });
 
 test('each pathway carries three northbound flocks with shared leaders and compact V formations', () => {
-  const birds = getBirdFeatures(5, 3).features;
+  const birds = getBirdFeatures(5).features;
   for (let routeIndex = 0; routeIndex < migrationRouteCount; routeIndex += 1) {
     const routeBirds = birds.filter((bird) => bird.properties.route_id === routeIndex);
     assert.equal(routeBirds.length, flocksPerRoute * birdsPerFlock);
