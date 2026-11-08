@@ -7,7 +7,6 @@ export type CountyLabelPoints = FeatureCollection<Point, CountyLabelProperties>;
 export interface TickRiskLabelProperties {
   geoid: string;
   name: string;
-  label_with_risk: string;
   sample_risk_percent: number;
   display_height: number;
   is_example: true;
@@ -21,7 +20,7 @@ export function buildTickRiskLabels(states: StateActivityFrame, counties: County
   const statesByFips = new Map(states.features.map((state) => [state.properties.fips, state]));
   const labelProperties = (name: string, activity: number, displayHeight: number, geoid: string): TickRiskLabelProperties => {
     const percentage = Math.round(activity * 100);
-    return { geoid, name, label_with_risk: `${name}\n${percentage}% sample risk`, sample_risk_percent: percentage,
+    return { geoid, name, sample_risk_percent: percentage,
       display_height: displayHeight, is_example: true };
   };
   const stateLabels: TickRiskLabels = { type: 'FeatureCollection', features: states.features.map((state) => ({
@@ -34,7 +33,14 @@ export function buildTickRiskLabels(states: StateActivityFrame, counties: County
     if (selectedStateCode && state.properties.code !== selectedStateCode) return [];
     return [{ type: 'Feature' as const, geometry: county.geometry,
       properties: labelProperties(county.properties.name, sampleTickActivityAtCoordinate(county.geometry.coordinates, observations),
-        selectedStateCode ? 4000 : state.properties.display_height + 4000, county.properties.geoid) }];
+        selectedStateCode ? 20 : state.properties.display_height + 4000, county.properties.geoid) }];
   }) };
   return { states: stateLabels, counties: countyLabels };
+}
+
+export function buildRegionalLabelSource(counties: TickRiskLabels, regionalBoundaries: FeatureCollection | null): FeatureCollection {
+  return { type: 'FeatureCollection', features: [
+    ...counties.features.map((county) => ({ ...county, properties: { ...county.properties, kind: 'county' } })),
+    ...(regionalBoundaries?.features.filter((feature) => feature.properties?.kind !== 'county') ?? []),
+  ] };
 }

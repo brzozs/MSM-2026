@@ -1,5 +1,6 @@
 import type { ExpressionSpecification, StyleSpecification } from 'maplibre-gl';
 import type { StateBoundaries } from '../data/mapTypes';
+import { tickActivityColors } from '../data/mapTypes';
 import { baseStateHeightMeters, buildDemoFrame, buildStateActivityFrame } from '../data/mapFrames';
 import { buildElevatedActivity } from '../data/activityGlow';
 import { buildTickRiskLabels } from '../data/tickRiskLabels';
@@ -8,12 +9,18 @@ export const stateLabelOpacity: ExpressionSpecification = ['interpolate', ['line
 export const stateRiskLabelOpacity: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], 3.9, 0, 4.7, 0.95, 5.4, 0.95, 6.4, 0];
 export const countyLabelOpacity: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], 5.4, 0, 6.4, 0.95];
 
+export function createCountyLabelText(showTickActivity: boolean, showCountyNames: boolean): ExpressionSpecification {
+  if (!showTickActivity) return showCountyNames ? ['get', 'name'] : ['literal', ''];
+  return ['format', showCountyNames ? ['concat', ['get', 'name'], '\n'] : '', { 'font-scale': 1.1 },
+    ['concat', ['to-string', ['get', 'sample_risk_percent']], showCountyNames ? '% risk' : '%'], { 'font-scale': 0.8 }];
+}
+
 export function createStateHeightExpression(showTickActivity: boolean): ExpressionSpecification | number {
   return showTickActivity ? ['get', 'display_height'] : baseStateHeightMeters;
 }
 
 export function createStateColorExpression(showTickActivity: boolean, showCommunityExposure: boolean): ExpressionSpecification {
-  const colors = showCommunityExposure ? ['#c5edce', '#96c6ad', '#648f7e', '#365b54'] : ['#d9eba3', '#a5c56e', '#6e8b51', '#42573c'];
+  const colors = tickActivityColors;
   return showTickActivity
     ? ['interpolate', ['linear'], ['get', 'sample_tick_activity'], 0, colors[0], 0.35, colors[1], 0.7, colors[2], 1, colors[3]]
     : ['literal', showCommunityExposure ? '#365b54' : '#42573c'];
@@ -48,28 +55,32 @@ export function createMapStyle(stateBoundaries: StateBoundaries): StyleSpecifica
         'icon-image': 'activity-glow', 'icon-size': 0.95, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
         'icon-pitch-alignment': 'map', 'icon-rotation-alignment': 'map', 'symbol-height-offset': ['get', 'display_height'],
       }, paint: { 'icon-opacity': ['interpolate', ['linear'], ['get', 'intensity'], 0, 0.08, 1, 0.75] } },
-      { id: 'regional-county-borders', type: 'line', source: 'regional-boundaries', filter: ['==', ['get', 'kind'], 'county'], paint: { 'line-color': '#d1d5ad', 'line-width': 1, 'line-opacity': 0.55 } },
-      { id: 'regional-town-borders', type: 'line', source: 'regional-boundaries', minzoom: 4.8, filter: ['!=', ['get', 'kind'], 'county'], paint: { 'line-color': '#a1b8a5', 'line-width': 0.65, 'line-opacity': 0.35 } },
+      { id: 'regional-town-borders', type: 'line', source: 'regional-boundaries', filter: ['!=', ['get', 'kind'], 'county'], paint: { 'line-color': '#a1b8a5', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 10, 0.65], 'line-opacity': 0.35 } },
+      { id: 'regional-county-borders', type: 'line', source: 'regional-boundaries', filter: ['==', ['get', 'kind'], 'county'], paint: { 'line-color': '#eff5cf', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.6, 10, 2.8], 'line-opacity': 0.9 } },
       { id: 'regional-county-names', type: 'symbol', source: 'regional-boundaries', filter: ['==', ['get', 'kind'], 'county'], layout: {
-        'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'], 'text-size': 11, 'text-max-width': 9, 'text-padding': 15,
+        'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'], 'text-size': 16, 'text-max-width': 10, 'text-padding': 24,
       }, paint: { 'text-color': '#e4e7cd', 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
-      { id: 'regional-town-names', type: 'symbol', source: 'regional-boundaries', minzoom: 6, filter: ['!=', ['get', 'kind'], 'county'], layout: {
-        'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'], 'text-size': 9, 'text-max-width': 8, 'text-padding': 9,
-      }, paint: { 'text-color': '#cbd9be', 'text-halo-color': '#203629', 'text-halo-width': 1 } },
+      { id: 'regional-town-names', type: 'symbol', source: 'county-label-points', filter: ['!=', ['get', 'kind'], 'county'], layout: {
+        'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'], 'text-size': 11, 'text-max-width': 9, 'text-padding': 10,
+        'text-allow-overlap': false, 'text-ignore-placement': false, 'symbol-height-offset': 20,
+      }, paint: { 'text-color': '#cbd9be', 'text-opacity': 0.8, 'text-halo-color': '#203629', 'text-halo-width': 1 } },
       { id: 'pathogen-context', type: 'line', source: 'states', filter: ['in', ['get', 'code'], ['literal', ['NY', 'PA', 'MA', 'CT', 'WI', 'MN']]], layout: { visibility: 'none' }, paint: { 'line-color': '#c3a6a1', 'line-width': 2, 'line-opacity': 0.8 } },
       { id: 'state-labels', type: 'symbol', source: 'state-label-points', minzoom: 1.2, layout: {
         'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'], 'text-size': 10,
+        'text-offset': ['step', ['zoom'], ['match', ['get', 'name'], 'MD', ['literal', [0, -0.9]], 'DC', ['literal', [0, 0.9]], ['literal', [0, 0]]], 3.9, ['literal', [0, 0]]],
         'text-line-height': 1.4, 'text-padding': 8, 'text-max-width': 12, 'symbol-height-offset': ['get', 'display_height'],
         'text-allow-overlap': true, 'text-ignore-placement': true,
       }, paint: { 'text-color': '#f4f5df', 'text-opacity': 0.95, 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
       { id: 'state-risk-labels', type: 'symbol', source: 'state-label-points', minzoom: 3.9, layout: {
-        'text-field': ['concat', ['to-string', ['get', 'sample_risk_percent']], '% sample risk'],
+        'text-field': ['concat', ['to-string', ['get', 'sample_risk_percent']], '% risk'],
         'text-font': ['Manrope Variable'], 'text-size': 10, 'text-offset': [0, 1.5],
         'text-padding': 8, 'text-max-width': 14, 'symbol-height-offset': ['get', 'display_height'],
       }, paint: { 'text-color': '#f4f5df', 'text-opacity': stateRiskLabelOpacity, 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
-      { id: 'county-risk-labels', type: 'symbol', source: 'county-label-points', minzoom: 5.4, layout: {
-        'text-field': ['get', 'label_with_risk'], 'text-font': ['Manrope Variable'], 'text-size': 10,
-        'text-line-height': 1.35, 'text-padding': 8, 'text-max-width': 12, 'symbol-height-offset': ['get', 'display_height'],
+      { id: 'county-risk-labels', type: 'symbol', source: 'county-label-points', filter: ['==', ['get', 'kind'], 'county'], layout: {
+        'text-field': createCountyLabelText(true, true), 'text-font': ['Manrope Variable'], 'text-size': ['interpolate', ['linear'], ['zoom'], 3, 11, 8, 14, 14, 18],
+        'text-anchor': 'bottom', 'text-offset': [0, 0.5], 'text-line-height': 1.25,
+        'text-padding': 4, 'text-max-width': 24, 'symbol-height-offset': ['get', 'display_height'],
+        'text-allow-overlap': false, 'text-ignore-placement': false,
         'symbol-sort-key': ['-', 100, ['get', 'sample_risk_percent']],
       }, paint: { 'text-color': '#f4f5df', 'text-opacity': countyLabelOpacity, 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
     ],

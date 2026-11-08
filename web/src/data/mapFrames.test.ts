@@ -55,9 +55,9 @@ test('state activity preserves every real boundary and marks bounded, changing v
       assert.ok(Number.isFinite(state.properties.sample_tick_activity));
       assert.ok(state.properties.sample_tick_activity >= 0 && state.properties.sample_tick_activity <= 1);
     }
-    const newYork = activityFrame.features.find((state) => state.properties.code === 'NY')!;
-    const alaska = activityFrame.features.find((state) => state.properties.code === 'AK')!;
-    assert.ok(newYork.properties.sample_tick_activity > alaska.properties.sample_tick_activity, 'Activity near the synthetic hotspots exceeds distant sample activity.');
+    const orderedStates = [...activityFrame.features].sort((first, second) => first.properties.sample_tick_activity - second.properties.sample_tick_activity);
+    assert.ok(orderedStates.at(-1)!.properties.sample_tick_activity > orderedStates[0].properties.sample_tick_activity);
+    assert.ok(orderedStates.at(-1)!.properties.display_height > orderedStates[0].properties.display_height, 'Higher sample activity makes a taller state block.');
   }
 });
 

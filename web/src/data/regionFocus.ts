@@ -33,8 +33,22 @@ export function getStateBounds(state: StateFeature): StateBounds {
     }
   }
   if (west > 180) west -= 360;
+  let east = west + 360 - largestGap;
+  const longitudeShift = Math.round((state.properties.center[0] - (west + east) / 2) / 360) * 360;
+  west += longitudeShift;
+  east += longitudeShift;
   return [[west, Math.min(...positions.map((position) => position[1]))],
-    [west + 360 - largestGap, Math.max(...positions.map((position) => position[1]))]];
+    [east, Math.max(...positions.map((position) => position[1]))]];
+}
+
+export function getUnitedStatesPanBounds(states: StateBoundaries): StateBounds {
+  const extent = getStateBounds({ type: 'Feature', properties: { code: 'US', name: 'United States', fips: 'US', center: [-125, 40] },
+    geometry: { type: 'MultiPolygon', coordinates: states.features.flatMap((state) => state.geometry.type === 'Polygon' ? [state.geometry.coordinates] : state.geometry.coordinates) } });
+  const [[west, south], [east, north]] = extent;
+  const longitudeMargin = (east - west) * 0.25;
+  const latitudeMargin = (north - south) * 0.25;
+  return [[west - longitudeMargin, Math.max(-85.051129, south - latitudeMargin)],
+    [east + longitudeMargin, Math.min(85.051129, north + latitudeMargin)]];
 }
 
 export function stateContainsCoordinate(state: StateFeature, position: Position, bounds = getStateBounds(state)): boolean {

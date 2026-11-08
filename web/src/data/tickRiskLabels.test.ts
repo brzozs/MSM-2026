@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { buildStateActivityFrame } from './mapFrames.ts';
-import { buildTickRiskLabels } from './tickRiskLabels.ts';
+import { buildRegionalLabelSource, buildTickRiskLabels } from './tickRiskLabels.ts';
 import type { CountyLabelPoints } from './tickRiskLabels';
 import type { StateBoundaries } from './mapTypes';
 import { stateContainsCoordinate } from './regionFocus.ts';
@@ -45,7 +45,7 @@ test('state and county percentages are bounded daily sample indices and stay abo
     assert.ok(Number.isInteger(label.properties.sample_risk_percent));
     assert.ok(label.properties.sample_risk_percent >= 0 && label.properties.sample_risk_percent <= 100);
     assert.equal(label.properties.is_example, true);
-    assert.match(label.properties.label_with_risk, /\d+% sample risk$/);
+    assert.ok(label.properties.name.length > 0);
   }
   assert.deepEqual(frame, originalFrame);
   assert.deepEqual(counties, originalCounties);
@@ -60,8 +60,29 @@ test('state focus keeps county percentages consistent while moving labels to the
   assert.equal(regional.counties.features.length, 62);
   const nationwidePercentages = new Map(national.counties.features.map((county) => [county.properties.geoid, county.properties.sample_risk_percent]));
   for (const label of regional.counties.features) {
-    assert.equal(label.properties.display_height, 4000);
+    assert.equal(label.properties.display_height, 20);
     assert.equal(label.properties.sample_risk_percent, nationwidePercentages.get(label.properties.geoid));
   }
   assert.throws(() => buildTickRiskLabels(frame, { type: 'FeatureCollection', features: [{ ...counties.features[0], properties: { ...counties.features[0].properties, state_fips: '99' } }] }, 3, null), /no matching state/);
+});
+
+test('every state retains its real counties and city/place geometry in the shared label source', () => {
+  const frame = buildStateActivityFrame(states, 3);
+  for (const state of states.features) {
+    const geography = JSON.parse(readFileSync(new URL(`../../public/data/regions/${state.properties.fips}.geojson`, import.meta.url), 'utf8'));
+    const geographyIdentifiers = new Set<string>();
+    for (const feature of geography.features) {
+      assert.ok(feature.properties.geoid.startsWith(state.properties.fips), `${state.properties.code}: FIPS identifies the correct state.`);
+      assert.ok(feature.properties.name.length > 0);
+      assert.ok(!geographyIdentifiers.has(feature.properties.geoid), `${state.properties.code}: geography identifiers are unique.`);
+      geographyIdentifiers.add(feature.properties.geoid);
+      assert.ok(['Polygon', 'MultiPolygon'].includes(feature.geometry.type));
+    }
+    const cities = geography.features.filter((feature: { properties: { kind: string } }) => feature.properties.kind !== 'county');
+    assert.ok(cities.length > 0, `${state.properties.code} has city/place geography.`);
+    const labels = buildTickRiskLabels(frame, counties, 3, state.properties.code);
+    const sharedSource = buildRegionalLabelSource(labels.counties, geography);
+    assert.deepEqual(sharedSource.features.filter((feature) => feature.properties?.kind !== 'county'), cities, 'City boundaries and names are preserved exactly.');
+    assert.equal(sharedSource.features.filter((feature) => feature.properties?.kind === 'county').length, labels.counties.features.length);
+  }
 });

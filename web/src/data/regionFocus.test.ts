@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { buildRegionalPreview, getStateBounds, stateContainsCoordinate } from './regionFocus.ts';
+import { buildRegionalPreview, getStateBounds, getUnitedStatesPanBounds, stateContainsCoordinate } from './regionFocus.ts';
 import type { StateFeature } from './regionFocus.ts';
 import type { StateBoundaries } from './mapTypes';
 
@@ -12,6 +12,36 @@ test('state bounds wrap Alaska at the antimeridian rather than fitting most of t
     const [[west, south], [east, north]] = getStateBounds(state);
     assert.ok(east > west && east - west < 80);
     assert.ok(north > south && north - south < 40);
+  }
+});
+
+test('pan bounds retain all 51 state/DC extents with a 25 percent margin and one shared longitude copy', () => {
+  const [[west, south], [east, north]] = getUnitedStatesPanBounds(states);
+  const stateExtents = states.features.map(getStateBounds);
+  const minimumLongitude = Math.min(...stateExtents.map((extent) => extent[0][0]));
+  const maximumLongitude = Math.max(...stateExtents.map((extent) => extent[1][0]));
+  assert.ok(west < minimumLongitude && east > maximumLongitude);
+  assert.ok(Math.abs((minimumLongitude - west) / (maximumLongitude - minimumLongitude) - 0.25) < 1e-8);
+  assert.ok(Math.abs((east - maximumLongitude) / (maximumLongitude - minimumLongitude) - 0.25) < 1e-8);
+  assert.ok(east - west < 200, 'The allowed view does not wrap around the whole world.');
+  assert.ok(south >= -85.051129 && north <= 85.051129);
+  for (const [[stateWest, stateSouth], [stateEast, stateNorth]] of stateExtents) {
+    assert.ok(stateWest >= west && stateEast <= east && stateSouth >= south && stateNorth <= north);
+  }
+  const alaskaBounds = getStateBounds(states.features.find((state) => state.properties.code === 'AK')!);
+  assert.ok(alaskaBounds[1][0] < 0, 'Alaska and the contiguous U.S. use the same antimeridian-safe world copy.');
+});
+
+test('Alaska and Hawaii have changing regional heatmap fixtures and real county/city detail', () => {
+  for (const code of ['AK', 'HI']) {
+    const state = states.features.find((feature) => feature.properties.code === code)!;
+    const first = buildRegionalPreview(state, 3);
+    const next = buildRegionalPreview(state, 4);
+    assert.ok(first.hotspots.features.some((point) => point.properties.intensity > 0.05));
+    assert.notDeepEqual(first.hotspots, next.hotspots);
+    const geography = JSON.parse(readFileSync(new URL(`../../public/data/regions/${state.properties.fips}.geojson`, import.meta.url), 'utf8'));
+    assert.ok(geography.features.some((feature: { properties: { kind: string } }) => feature.properties.kind === 'county'));
+    assert.ok(geography.features.some((feature: { properties: { kind: string } }) => feature.properties.kind === 'place'));
   }
 });
 

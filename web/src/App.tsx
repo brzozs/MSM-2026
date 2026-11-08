@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Bird, Check, ChevronDown, Globe2, Info, Layers2, MapPin, PanelLeftClose, Search, X } from 'lucide-react';
+import { Bird, Check, ChevronDown, Globe2, Layers2, MapPin, PanelLeftClose, Search } from 'lucide-react';
 import type { EcologicalLayerId } from './data/contracts';
-import { layerDefinitions } from './data/mapTypes';
+import { layerDefinitions, tickActivityColors } from './data/mapTypes';
 import type { StateBoundaries, VisibleLayers } from './data/mapTypes';
 import { createTimelineDays } from './data/mapFrames';
 import MapCanvas from './map/MapCanvas';
@@ -15,7 +15,6 @@ export default function App() {
   const [selectedStateCode, setSelectedStateCode] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(3);
   const [layerPanelOpen, setLayerPanelOpen] = useState(() => window.innerWidth > 760);
-  const [aboutPreviewOpen, setAboutPreviewOpen] = useState(false);
   const stateSelectorRef = useRef<HTMLSelectElement>(null);
   const layerPanelTriggerRef = useRef<HTMLButtonElement>(null);
   const days = useMemo(() => createTimelineDays(new Date()), []);
@@ -61,10 +60,7 @@ export default function App() {
     <header className="app-header">
       <a className="wordmark" href="/" aria-label="VectorCast home"><Bird size={30} strokeWidth={1.4} /><span>VectorCast<small>Ecological early warning</small></span></a>
       {!selectedState && <div className="header-location"><Globe2 size={15} /><span>United States</span><span className="header-divider" />National overview</div>}
-      <button className="sample-badge" aria-expanded={aboutPreviewOpen} onClick={() => setAboutPreviewOpen(!aboutPreviewOpen)}><span className="status-dot" />Sample visualization<Info size={14} /></button>
     </header>
-
-    {aboutPreviewOpen && <aside className="preview-popover" aria-label="About this preview"><button className="icon-button" aria-label="Close preview information" onClick={() => setAboutPreviewOpen(false)}><X size={16} /></button><h2>Real geography. Sample activity.</h2><p>Taller, darker states show higher sample tick activity; brighter green shows lower activity. Percentages are synthetic sample risk indices, not measured infestation or infection probabilities. Zoom in for county percentages; select a state for regional heatmaps. Birds and wind trails are illustrative. Live observations, weather and health risk are not connected yet.</p></aside>}
 
     <button ref={layerPanelTriggerRef} className="layer-panel-trigger" aria-hidden={layerPanelOpen} inert={layerPanelOpen} aria-expanded={layerPanelOpen} aria-controls="map-layers" onClick={openLayerPanel}><Layers2 size={16} />Map layers<ChevronDown size={14} /></button>
     <aside className="layer-panel" aria-hidden={!layerPanelOpen} inert={!layerPanelOpen} id="map-layers" aria-label="Map layers and region selection">
@@ -82,8 +78,8 @@ export default function App() {
     </aside>
 
     <div className="map-legend" aria-label="Map legend">
-      {visibleLayers.tick_activity && <><span className="legend-title">Sample tick risk</span><div className="legend-ramp legend-risk-ramp" /><div className="legend-labels"><span>Lower · Brighter</span><span>Higher · Darker</span></div><span className="legend-state-height">% = sample index · Not measured risk</span><span className="legend-state-height">{selectedState ? 'Regional heatmap · Zoom for towns' : 'Zoom for state → county percentages'}</span></>}
-      {visibleLayers.bird_activity && <div className="legend-flyway legend-wind"><span aria-hidden="true">↑</span>Northbound sample wind</div>}
+      {visibleLayers.tick_activity && <><span className="legend-title">Illustrative tick risk</span><div className="legend-ramp" style={{ backgroundImage: `linear-gradient(90deg, ${tickActivityColors.join(', ')})` }} /><div className="legend-labels"><span>Lower</span><span>Higher</span></div><span className="legend-state-height">% = preview index · Not measured risk</span></>}
+      {visibleLayers.bird_activity && <div className="legend-flyway legend-wind"><span aria-hidden="true">↑</span>Northbound illustrative wind</div>}
       {visibleLayers.pathogen_evidence && <div className="legend-flyway legend-coverage"><span />Coverage preview</div>}
       {visibleLayers.community_exposure && <div className="legend-flyway legend-community"><span />Community layer preview</div>}
     </div>
