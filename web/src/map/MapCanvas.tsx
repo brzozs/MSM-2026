@@ -71,7 +71,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
         center: [-97, 37.7], zoom: 3.7, pitch: 52, bearing: -12, minZoom: 1.2, maxZoom: 10, maxPitch: 65,
         dragRotate: { around: 'center', movement: 'linear' }, dragPan: true, scrollZoom: true,
         pitchWithRotate: true, pitchSpeed: -0.35, rotateSpeed: 0.4, attributionControl: { compact: true },
-        crossSourceCollisions: false, fadeDuration: 350, canvasContextAttributes: { antialias: true } });
+        crossSourceCollisions: false, fadeDuration: 350, reduceMotion: false, canvasContextAttributes: { antialias: true } });
       mapRef.current = map;
     } catch {
       setMapError('The interactive map needs WebGL. Choose a state to read its data.'); return;
@@ -112,7 +112,6 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     const dayHasChanged = previousForecastDateRef.current !== weatherFrame?.date;
     previousForecastDateRef.current = weatherFrame?.date ?? null;
     const targetStates = buildEcologyMapData(stateBoundaries, weatherFrame).states;
-    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     let animationFrameId = 0;
     const startedAt = performance.now();
     let lastUpdate = 0;
@@ -134,11 +133,10 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
       if (progress < 1) animationFrameId = requestAnimationFrame(animate);
     };
     const finishTransition = () => { cancelAnimationFrame(animationFrameId); applyStates(targetStates); };
-    if (!previousStates || !weatherFrame || !dayHasChanged || motionPreference.matches || document.hidden) finishTransition();
+    if (!previousStates || !weatherFrame || !dayHasChanged || document.hidden) finishTransition();
     else animationFrameId = requestAnimationFrame(animate);
-    motionPreference.addEventListener('change', finishTransition);
     document.addEventListener('visibilitychange', finishTransition);
-    return () => { cancelAnimationFrame(animationFrameId); motionPreference.removeEventListener('change', finishTransition); document.removeEventListener('visibilitychange', finishTransition); };
+    return () => { cancelAnimationFrame(animationFrameId); document.removeEventListener('visibilitychange', finishTransition); };
   }, [mapReady, weatherFrame, stateBoundaries, selectedStateCode]);
 
   useEffect(() => {
@@ -213,7 +211,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     }
     const generationKey = `${selectedStateCode}/${stateSnapshot?.generated_at ?? ''}`;
     const shouldAnimate = heatmapGenerationRef.current === generationKey && heatmapDateRef.current !== weatherFrame?.date
-      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && !document.hidden;
+      && !document.hidden;
     heatmapGenerationRef.current = generationKey;
     heatmapDateRef.current = weatherFrame?.date ?? '';
     const previousValues = new Map(displayedHeatmapRef.current.features.map((point) => [point.id, point.properties]));
@@ -285,11 +283,10 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
 
   useEffect(() => {
     if (!mapReady || !visibleLayers.bird_activity) return;
-    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     let stopAnimation = () => {};
     const resumeAnimation = () => {
       stopAnimation();
-      if (!document.hidden && !motionPreference.matches) {
+      if (!document.hidden) {
         stopAnimation = startAnimationLoop(migrationClockRef.current,
           (elapsedSeconds) => migrationLayerRef.current?.setFrame(elapsedSeconds),
           { now: () => performance.now(), requestFrame: (callback) => window.requestAnimationFrame(callback),
@@ -298,8 +295,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     };
     resumeAnimation();
     document.addEventListener('visibilitychange', resumeAnimation);
-    motionPreference.addEventListener('change', resumeAnimation);
-    return () => { stopAnimation(); document.removeEventListener('visibilitychange', resumeAnimation); motionPreference.removeEventListener('change', resumeAnimation); };
+    return () => { stopAnimation(); document.removeEventListener('visibilitychange', resumeAnimation); };
   }, [mapReady, visibleLayers.bird_activity]);
 
   useEffect(() => {
@@ -314,7 +310,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
         focusedStateZoomRef.current = camera.zoom ?? null;
         map.stop();
         map.easeTo({ ...camera, pitch: 42, bearing: -12, essential: true,
-          duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1600,
+          duration: 1600,
           easing: (progress) => progress * progress * (3 - 2 * progress) });
       }
     } else fitNationalView(map);
@@ -337,5 +333,5 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
 function fitNationalView(map: MapLibreMap) {
   map.fitBounds([[-126, 24], [-66, 50]], { absolutePadding: true,
     padding: window.innerWidth > 760 ? { top: 120, bottom: 140, left: 280, right: 65 } : { top: 140, bottom: 155, left: 24, right: 24 },
-    pitch: 52, bearing: -12, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 650 });
+    pitch: 52, bearing: -12, duration: 650 });
 }

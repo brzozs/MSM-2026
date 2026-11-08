@@ -141,10 +141,6 @@ select option { color: #edf0dc; background: #20362a; }
   .map-fallback { inset: 26% 3% 30%; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
-}
-
 @media (pointer: coarse) {
 }
 
@@ -168,7 +164,6 @@ select option { color: #edf0dc; background: #20362a; }
 .layer-panel-trigger { display: flex; position: absolute; top: 112px; left: 38px; align-items: center; gap: 8px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); font-size: 10px; z-index: 4; }
 .layer-panel, .layer-panel-trigger { opacity: 1; translate: 0 0; visibility: visible; transition: opacity 450ms ease, translate 450ms ease, visibility 0s; }
 .layer-panel[aria-hidden="true"], .layer-panel-trigger[aria-hidden="true"] { opacity: 0; translate: 0 7px; visibility: hidden; pointer-events: none; transition: opacity 450ms ease, translate 450ms ease, visibility 0s 450ms; }
-@media (prefers-reduced-motion: reduce) { .layer-panel, .layer-panel-trigger { transition: none; } }
 @media (max-width: 760px) {
   .layer-panel-trigger { left: 18px; top: 103px; }
   .state-is-focused .layer-panel-trigger { top: 171px; }

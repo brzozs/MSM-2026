@@ -31,7 +31,7 @@ npm --prefix web run dev
 
 Prepare a collected national snapshot first using the [pipeline instructions](pipeline/README.md); publication excludes all collection caches and credentials. Open the local URL Vite prints. The existing React/TypeScript/Vite map keeps its original layout, real geography, layer toggles, manually selected forecast dates, zoom/reset controls and compact state details. On mobile, use Map layers to select a state or change overlays.
 
-State heights and colors now use real forecast inputs and experimental weather suitability, with subtle transitions between actual UTC forecast days. Bird routes use sourced broad seasonal guidance; tracks and trails remain explicitly illustrative. State selection loads actual weather heatmaps, simple county/city labels, bird/tick report counts and compact weather details. Source freshness and unavailable inputs stay visible; pathogen/community sources remain unconnected. No disease probability is calculated.
+State heights and colors now use real forecast inputs and experimental weather suitability, with subtle transitions between actual UTC forecast days. Bird routes use sourced broad seasonal guidance; tracks and trails remain explicitly illustrative. State selection loads actual weather heatmaps, simple county/city labels, bird/tick report counts and compact weather details. Source timestamps remain in the published data; the map omits the stale-weather banner. Unavailable inputs stay visible; pathogen/community sources remain unconnected. No disease probability is calculated.
 
 ```bash
 npm --prefix web test
@@ -42,6 +42,6 @@ npm --prefix web run preview
 
 `web/src/map/` owns map rendering and cleanup. `web/src/data/ecologyData.ts` loads/validates the public atlas and prepares state values; `pipeline/contracts.ts` defines its contract. `web/src/data/mapFrames.ts` retains the original illustrative flight helpers. `web/public/data/README.md` records geography provenance. Boundaries and fonts are bundled; the eBird key stays backend-only.
 
-The map respects reduced motion and provides a static geography fallback when WebGL cannot start. Keyboard users can select states through the region selector. The [twice-daily refresh workflow and activation requirements](pipeline/README.md#display-and-refresh-the-map) are documented separately; the model remains experimental.
+Map animations run while the page is visible, including when the browser requests reduced motion. Bird animation pauses while its layer is disabled or the page is hidden. The map provides a static geography fallback when WebGL cannot start. Keyboard users can select states through the region selector. The [twice-daily refresh workflow and activation requirements](pipeline/README.md#display-and-refresh-the-map) are documented separately; the model remains experimental.
 
 Framework task: [issue #8](https://github.com/brzozs/HackRPI-2026-MSM/issues/8). Map frontend task: [issue #9](https://github.com/brzozs/HackRPI-2026-MSM/issues/9). Real-data integration: [issue #13](https://github.com/brzozs/HackRPI-2026-MSM/issues/13). Local snapshots work without a hosted database; scheduled publication still needs deployment setup.

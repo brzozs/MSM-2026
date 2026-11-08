@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Bird, Check, ChevronDown, Globe2, Layers2, MapPin, PanelLeftClose } from 'lucide-react';
 import { layerDefinitions } from './data/mapTypes';
 import type { StateBoundaries, VisibleLayers } from './data/mapTypes';
-import { buildStateHeatmap, createForecastDays, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, snapshotIsStale, type LoadedAtlas } from './data/ecologyData';
+import { buildStateHeatmap, createForecastDays, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, type LoadedAtlas } from './data/ecologyData';
 import type { EcologySnapshot } from '../../pipeline/contracts';
 import { getSeasonalMigrationDirection } from './data/seasonalMigration';
 import { tickSuitabilityColorStops } from './map/mapStyle';
@@ -33,7 +33,6 @@ export default function App() {
   const weatherFrame = atlas?.overview.frames.find((frame) => frame.date === activeDate) ?? null;
   const localHeatmap = useMemo(() => stateSnapshot && activeDate && selectedStateCode ? buildStateHeatmap(stateSnapshot, activeDate, selectedStateCode) : null, [stateSnapshot, activeDate, selectedStateCode]);
   const seasonalDirection = activeDate ? getSeasonalMigrationDirection(activeDate) : null;
-  const isStale = atlas ? snapshotIsStale(atlas.manifest, currentTime) : false;
   const states = useMemo(() => [...(stateBoundaries?.features ?? [])].sort((first, second) => first.properties.name.localeCompare(second.properties.name)), [stateBoundaries]);
   const selectedState = states.find((state) => state.properties.code === selectedStateCode)?.properties;
 
@@ -115,8 +114,8 @@ export default function App() {
       {!selectedState && <div className="header-location"><Globe2 size={15} /><span>United States</span><span className="header-divider" />National overview</div>}
     </header>
 
-    {(!atlas || dataError || isStale || selectedDateUnavailable) && <p className="ecology-data-status" role={dataError ? 'alert' : 'status'}>
-      {dataError ? `${dataError} ${atlas ? 'Showing the last loaded dataset.' : 'Publish the collected dataset to display source data.'}` : !atlas ? 'Loading published ecology data…' : isStale ? 'Weather inputs are stale. Showing the last successful collection.' : ''}
+    {(!atlas || dataError || selectedDateUnavailable) && <p className="ecology-data-status" role={dataError ? 'alert' : 'status'}>
+      {dataError ? `${dataError} ${atlas ? 'Showing the last loaded dataset.' : 'Publish the collected dataset to display source data.'}` : !atlas ? 'Loading published ecology data…' : ''}
       {selectedDateUnavailable && ` The selected date, ${activeDate}, is no longer in the published forecast. Choose a date below.`}
     </p>}
 
