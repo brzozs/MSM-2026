@@ -1,0 +1,19 @@
+{
+  "environment": {
+    "node": "v24.13.0",
+    "sample": "national 84 birds, 22428 vertices, 4000 meter model scale"
+  },
+  "exactFloat32Comparisons": 108,
+  "baseline": {
+    "samples": 200,
+    "medianMs": 12.616899999999987,
+    "p95Ms": 14.320400000000063
+  },
+  "optimized": {
+    "samples": 200,
+    "medianMs": 1.9427999999998065,
+    "p95Ms": 2.6889000000001033
+  },
+  "vertexBufferBytes": 717696,
+  "medianReductionPercent": 84.60160578272152
+}

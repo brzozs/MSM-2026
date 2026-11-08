@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Map as MapLibreMap, GeoJSONSource, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import type { FeatureCollection } from 'geojson';
 import { Focus, Minus, Plus } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { StateBoundaries, VisibleLayers } from '../data/mapTypes';
-import { buildDemoFrame, buildStateActivityFrame } from '../data/mapFrames';
-import { createMapStyle, createStateColorExpression, createStateHeightExpression } from './mapStyle';
+import { baseStateHeightMeters, buildDemoFrame, buildStateActivityFrame } from '../data/mapFrames';
+import { countyLabelOpacity, createCountyLabelText, createMapStyle, createStateColorExpression, createStateHeightExpression, stateLabelOpacity, stateRiskLabelOpacity } from './mapStyle';
 import { MigrationLayer } from './MigrationLayer';
-import { buildRegionalPreview, getStateBounds } from '../data/regionFocus';
+import { buildRegionalPreview, getStateBounds, getUnitedStatesPanBounds } from '../data/regionFocus';
 import { buildElevatedActivity } from '../data/activityGlow';
 import { createActivityGlowImage } from './activityGlowImage';
+import { buildRegionalLabelSource, buildTickRiskLabels } from '../data/tickRiskLabels';
+import type { CountyLabelPoints } from '../data/tickRiskLabels';
 
 setWorkerUrl(workerUrl);
 
@@ -27,18 +30,49 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   const selectedDayRef = useRef(selectedDayIndex);
   const selectStateRef = useRef(onSelectState);
   const migrationLayerRef = useRef<MigrationLayer | null>(null);
+  const previousLabelGeometryRef = useRef<{ stateCode: string | null; counties: CountyLabelPoints | null; boundaries: FeatureCollection | null } | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapGeneration, setMapGeneration] = useState(0);
   const [mapError, setMapError] = useState<string | null>(null);
   const [boundaryStatus, setBoundaryStatus] = useState<string | null>(null);
+  const [countyLabelPoints, setCountyLabelPoints] = useState<CountyLabelPoints | null>(null);
+  const [countyLabelError, setCountyLabelError] = useState(false);
+  const [regionalGeography, setRegionalGeography] = useState<{ stateCode: string; boundaries: FeatureCollection } | null>(null);
+  const [regionalFocusZoom, setRegionalFocusZoom] = useState<number | null>(null);
+  const [showCityNames, setShowCityNames] = useState(false);
+  const stateActivity = useMemo(() => buildStateActivityFrame(stateBoundaries, selectedDayIndex), [stateBoundaries, selectedDayIndex]);
   const selectedState = useMemo(() => stateBoundaries.features.find((state) => state.properties.code === selectedStateCode), [stateBoundaries, selectedStateCode]);
   const regionalPreview = useMemo(() => selectedState ? buildRegionalPreview(selectedState, selectedDayIndex) : null, [selectedState, selectedDayIndex]);
+  const regionalBoundaries = regionalGeography?.stateCode === selectedStateCode ? regionalGeography.boundaries : null;
 
   useEffect(() => { selectedDayRef.current = selectedDayIndex; }, [selectedDayIndex]);
   useEffect(() => { selectStateRef.current = onSelectState; }, [onSelectState]);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    fetch('/data/county-labels.geojson', { signal: abortController.signal })
+      .then((response) => { if (!response.ok) throw new Error('County labels request failed.'); return response.json(); })
+      .then((data: CountyLabelPoints) => {
+        if (abortController.signal.aborted) return;
+        const stateFips = new Set(stateBoundaries.features.map((state) => state.properties.fips));
+        if (data.type !== 'FeatureCollection' || !Array.isArray(data.features) || !data.features.length
+          || !data.features.every((feature) => feature.geometry?.type === 'Point'
+            && feature.geometry.coordinates.length >= 2 && feature.geometry.coordinates.every(Number.isFinite)
+            && typeof feature.properties?.name === 'string' && typeof feature.properties.geoid === 'string'
+            && stateFips.has(feature.properties.state_fips))) {
+          throw new Error('Invalid county label geography.');
+        }
+        setCountyLabelPoints(data);
+      })
+      .catch(() => { if (!abortController.signal.aborted) setCountyLabelError(true); });
+    return () => abortController.abort();
+  }, [stateBoundaries]);
+
+  useEffect(() => {
     if (!containerRef.current) return;
     setMapReady(false);
+    setMapError(null);
+    previousLabelGeometryRef.current = null;
     let map: MapLibreMap;
     let disposed = false;
     try {
@@ -46,10 +80,12 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
         container: containerRef.current,
         style: createMapStyle(stateBoundaries),
         center: [-97, 37.7], zoom: 3.7, pitch: 52, bearing: -12,
-        minZoom: 1.2, maxZoom: 10, maxPitch: 65,
+        minZoom: 1.2, maxZoom: 14, maxPitch: 65, maxBounds: getUnitedStatesPanBounds(stateBoundaries),
         dragRotate: { around: 'center', movement: 'linear' }, dragPan: true, scrollZoom: true,
         pitchWithRotate: true, pitchSpeed: -0.35, rotateSpeed: 0.4,
         attributionControl: { compact: true },
+        // County/city labels share one source; states crossfade independently.
+        crossSourceCollisions: false, fadeDuration: 350,
         canvasContextAttributes: { antialias: true },
       });
       mapRef.current = map;
@@ -76,29 +112,61 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     map.on('mousemove', (event) => { if (map.isStyleLoaded()) map.getCanvas().style.cursor = map.queryRenderedFeatures(event.point, { layers: [visibleStateLayer()] }).length ? 'pointer' : ''; });
     map.on('mouseout', () => { map.getCanvas().style.cursor = ''; });
     map.on('webglcontextlost', () => {
-      if (!disposed) setMapError('The map lost its graphics connection. Reload to restore it, or choose a state to preview.');
+      if (disposed) return;
+      setMapReady(false);
+      setMapError('The map lost its graphics connection. Waiting for graphics to recover; you can still choose a state.');
+    });
+    map.on('webglcontextrestored', () => {
+      if (!disposed) setMapGeneration((currentGeneration) => currentGeneration + 1);
     });
     map.on('error', (event) => {
       if (!disposed && event.error.message.includes('countries.geojson')) setMapError('The base map could not load. Refresh the page to try again.');
     });
     return () => { disposed = true; mapRef.current = null; migrationLayerRef.current = null; map.remove(); };
-  }, [stateBoundaries]);
+  }, [stateBoundaries, mapGeneration]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const stateActivity = buildStateActivityFrame(stateBoundaries, selectedDayIndex);
     (map.getSource('sample-activity') as GeoJSONSource).setData(regionalPreview?.hotspots ?? buildElevatedActivity(stateActivity, buildDemoFrame(selectedDayIndex).observations));
     (map.getSource('states') as GeoJSONSource).setData(stateActivity);
     migrationLayerRef.current?.setRegionRoute(regionalPreview?.migrationRoute ?? null, !!selectedState);
     migrationLayerRef.current?.setFrame(0, selectedDayIndex);
-  }, [mapReady, selectedDayIndex, stateBoundaries, selectedState, regionalPreview]);
+  }, [mapReady, selectedDayIndex, stateActivity, selectedState, regionalPreview]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const source = map.getSource('regional-boundaries') as GeoJSONSource;
-    source.setData({ type: 'FeatureCollection', features: [] });
+    const riskLabels = buildTickRiskLabels(stateActivity, countyLabelPoints ?? { type: 'FeatureCollection', features: [] }, selectedDayIndex, selectedStateCode);
+    (map.getSource('state-label-points') as GeoJSONSource).setData(riskLabels.states);
+    const countySource = map.getSource('county-label-points') as GeoJSONSource;
+    const previousGeometry = previousLabelGeometryRef.current;
+    if (previousGeometry && previousGeometry.stateCode === selectedStateCode
+      && previousGeometry.counties === countyLabelPoints && previousGeometry.boundaries === regionalBoundaries) {
+      // Dates change county values, not the megabytes of shared city geometry.
+      void countySource.updateData({ update: riskLabels.counties.features.map((county) => ({
+        id: county.properties.geoid,
+        addOrUpdateProperties: [
+          { key: 'sample_risk_percent', value: county.properties.sample_risk_percent },
+          { key: 'display_height', value: county.properties.display_height },
+        ],
+      })) }).catch(() => setCountyLabelError(true));
+    } else {
+      countySource.setData(buildRegionalLabelSource(riskLabels.counties, regionalBoundaries));
+      previousLabelGeometryRef.current = { stateCode: selectedStateCode, counties: countyLabelPoints, boundaries: regionalBoundaries };
+    }
+  }, [mapReady, selectedDayIndex, stateActivity, selectedStateCode, countyLabelPoints, regionalBoundaries]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    (map.getSource('regional-boundaries') as GeoJSONSource).setData(regionalBoundaries ?? { type: 'FeatureCollection', features: [] });
+  }, [mapReady, regionalBoundaries]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    setRegionalGeography(null);
     if (!selectedState) { setBoundaryStatus(null); return; }
     const abortController = new AbortController();
     setBoundaryStatus('Loading county and town boundaries…');
@@ -107,7 +175,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
       .then((data) => {
         if (abortController.signal.aborted) return;
         if (data.type !== 'FeatureCollection' || !Array.isArray(data.features)) throw new Error('Invalid regional geography.');
-        source.setData(data);
+        setRegionalGeography({ stateCode: selectedState.properties.code, boundaries: data });
         setBoundaryStatus(null);
       })
       .catch(() => { if (!abortController.signal.aborted) setBoundaryStatus('County and town boundaries could not load. Refresh to retry.'); });
@@ -117,43 +185,62 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const layerGroups = {
-      bird_activity: [],
-      tick_activity: ['tick-activity-glow'], pathogen_evidence: ['pathogen-context'], community_exposure: [],
-    };
-    for (const [layerId, mapLayerIds] of Object.entries(layerGroups)) {
-      for (const mapLayerId of mapLayerIds) {
-        if (map.getLayer(mapLayerId)) map.setLayoutProperty(mapLayerId, 'visibility', visibleLayers[layerId as keyof VisibleLayers] ? 'visible' : 'none');
-      }
-    }
     migrationLayerRef.current?.setVisible(visibleLayers.bird_activity);
     const nationalColors = createStateColorExpression(visibleLayers.tick_activity, visibleLayers.community_exposure);
-    map.setPaintProperty('states-raised', 'fill-extrusion-color', selectedState
-      ? ['case', ['==', ['get', 'code'], selectedStateCode], '#344b35', '#1d3026'] : nationalColors);
-    map.setPaintProperty('states', 'fill-color', selectedState ? ['case', ['==', ['get', 'code'], selectedStateCode], '#344b35', '#1d3026'] : '#465b3f');
+    map.setPaintProperty('states-raised', 'fill-extrusion-color', nationalColors);
+    map.setPaintProperty('states', 'fill-color', selectedState ? ['case', ['==', ['get', 'code'], selectedStateCode], nationalColors, '#1d3026'] : '#465b3f');
     map.setLayoutProperty('states-raised', 'visibility', selectedState ? 'none' : 'visible');
     map.setPaintProperty('states-raised', 'fill-extrusion-height', regionalPreview?.platformHeightMeters ?? createStateHeightExpression(visibleLayers.tick_activity));
     map.setPaintProperty('land', 'fill-color', selectedState ? '#172820' : '#293e31');
-    map.setPaintProperty('state-outlines', 'line-opacity', selectedState ? 0.12 : 0.35);
+    for (const borderLayer of ['state-outlines', 'regional-county-borders']) {
+      map.setLayoutProperty(borderLayer, 'visibility', selectedState ? 'visible' : 'none');
+    }
+    map.setLayoutProperty('regional-town-names', 'visibility', selectedState && showCityNames ? 'visible' : 'none');
+    map.setLayoutProperty('regional-town-borders', 'visibility', selectedState && showCityNames ? 'visible' : 'none');
     map.setLayoutProperty('tick-activity-glow', 'icon-size', selectedState ? 0.85 : 0.95);
+    map.setLayoutProperty('tick-activity-glow', 'visibility', selectedState && visibleLayers.tick_activity ? 'visible' : 'none');
+    map.setLayoutProperty('pathogen-context', 'visibility', selectedState && visibleLayers.pathogen_evidence ? 'visible' : 'none');
+    for (const labelLayer of ['state-labels', 'state-risk-labels', 'county-risk-labels']) {
+      map.setLayoutProperty(labelLayer, 'symbol-height-offset', visibleLayers.tick_activity ? ['get', 'display_height'] : selectedState ? (labelLayer === 'county-risk-labels' ? 20 : 4000) : baseStateHeightMeters + 4000);
+    }
+    map.setLayoutProperty('county-risk-labels', 'text-field', createCountyLabelText(visibleLayers.tick_activity, !selectedState || !showCityNames));
+    map.setLayoutProperty('county-risk-labels', 'text-padding', selectedState && showCityNames ? 14 : 4);
+    map.setPaintProperty('county-risk-labels', 'text-opacity', selectedState ? 0.95 : countyLabelOpacity);
     map.setLayoutProperty('state-labels', 'visibility', selectedState ? 'none' : 'visible');
-    map.setLayoutProperty('state-labels', 'symbol-height-offset', ['+', createStateHeightExpression(visibleLayers.tick_activity), 4000]);
+    map.setLayoutProperty('state-risk-labels', 'visibility', !selectedState && visibleLayers.tick_activity ? 'visible' : 'none');
+    map.setPaintProperty('state-labels', 'text-opacity', countyLabelPoints ? stateLabelOpacity : 0.95);
+    map.setPaintProperty('state-risk-labels', 'text-opacity', countyLabelPoints ? stateRiskLabelOpacity : ['interpolate', ['linear'], ['zoom'], 3.9, 0, 4.7, 0.95]);
+    map.setLayoutProperty('regional-county-names', 'visibility', selectedState && !countyLabelPoints ? 'visible' : 'none');
     map.setFilter('pathogen-context', selectedState ? ['==', ['get', 'code'], selectedStateCode] : ['in', ['get', 'code'], ['literal', ['NY', 'PA', 'MA', 'CT', 'WI', 'MN']]]);
     map.setFilter('selected-state-outline', ['==', ['get', 'code'], selectedStateCode ?? '']);
-  }, [mapReady, visibleLayers, selectedStateCode, selectedState, regionalPreview]);
+  }, [mapReady, visibleLayers, selectedStateCode, selectedState, regionalPreview, countyLabelPoints, showCityNames]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+    setShowCityNames(false);
     if (selectedState) {
-      map.fitBounds(getStateBounds(selectedState), {
+      const bounds = getStateBounds(selectedState);
+      const cameraOptions = {
         absolutePadding: true, maxZoom: 10, pitch: 42, bearing: -12,
         padding: map.getContainer().clientWidth > 760
-          ? { top: 175, bottom: 195, left: 300, right: 75 } : { top: 190, bottom: 210, left: 36, right: 36 },
+          ? { top: 175, bottom: 195, left: 65, right: 65 } : { top: 190, bottom: 210, left: 28, right: 28 },
         duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300,
-      });
-    } else fitNationalView(map);
+      };
+      setRegionalFocusZoom(map.cameraForBounds(bounds, cameraOptions)?.zoom ?? map.getZoom());
+      map.fitBounds(bounds, cameraOptions);
+    } else { setRegionalFocusZoom(null); fitNationalView(map); }
   }, [mapReady, selectedState]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || regionalFocusZoom === null) return;
+    const updateRegionalDetail = () => setShowCityNames(map.getZoom() > regionalFocusZoom + 0.1);
+    // A zero-duration fit can finish before this listener is attached.
+    if (!map.isMoving()) updateRegionalDetail();
+    map.on('zoomend', updateRegionalDetail);
+    return () => { map.off('zoomend', updateRegionalDetail); };
+  }, [mapReady, regionalFocusZoom]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -189,10 +276,10 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
 
   return <>
     <div className="map-canvas" ref={containerRef} aria-label="Interactive ecological map of the United States" />
-    <p className="map-drag-hint">Right-drag to tilt + rotate<br /><span>Left-drag to pan · Scroll to zoom</span></p>
     {!mapReady && !mapError && <div className="map-loading" role="status">Preparing your map…</div>}
     {mapError && <div className="map-fallback"><img src="/data/us-states-preview.svg" alt="United States state boundaries" /><p role="status">{mapError}</p></div>}
     {selectedState && boundaryStatus && <p className="regional-geography-status" role="status">{boundaryStatus}</p>}
+    {countyLabelError && <p className="regional-geography-status" role="status">County risk labels could not load. Refresh to retry.</p>}
     <div className="map-navigation" aria-label="Map navigation">
       <button aria-label="Zoom in" disabled={!mapReady || !!mapError} onClick={() => mapRef.current?.zoomIn()}><Plus size={18} /></button>
       <button aria-label="Zoom out" disabled={!mapReady || !!mapError} onClick={() => mapRef.current?.zoomOut()}><Minus size={18} /></button>

@@ -1,6 +1,7 @@
 import type { Position } from 'geojson';
 import type { StateBoundaries } from './mapTypes';
 import type { MigrationRoute } from './mapFrames';
+import { buildDemoFrame, sampleTickActivityAtCoordinate } from './mapFrames.ts';
 import type { ActivityGlowFrame } from './activityGlow';
 
 export type StateFeature = StateBoundaries['features'][number];
@@ -32,8 +33,22 @@ export function getStateBounds(state: StateFeature): StateBounds {
     }
   }
   if (west > 180) west -= 360;
+  let east = west + 360 - largestGap;
+  const longitudeShift = Math.round((state.properties.center[0] - (west + east) / 2) / 360) * 360;
+  west += longitudeShift;
+  east += longitudeShift;
   return [[west, Math.min(...positions.map((position) => position[1]))],
-    [west + 360 - largestGap, Math.max(...positions.map((position) => position[1]))]];
+    [east, Math.max(...positions.map((position) => position[1]))]];
+}
+
+export function getUnitedStatesPanBounds(states: StateBoundaries): StateBounds {
+  const extent = getStateBounds({ type: 'Feature', properties: { code: 'US', name: 'United States', fips: 'US', center: [-125, 40] },
+    geometry: { type: 'MultiPolygon', coordinates: states.features.flatMap((state) => state.geometry.type === 'Polygon' ? [state.geometry.coordinates] : state.geometry.coordinates) } });
+  const [[west, south], [east, north]] = extent;
+  const longitudeMargin = (east - west) * 0.25;
+  const latitudeMargin = (north - south) * 0.25;
+  return [[west - longitudeMargin, Math.max(-85.051129, south - latitudeMargin)],
+    [east + longitudeMargin, Math.min(85.051129, north + latitudeMargin)]];
 }
 
 export function stateContainsCoordinate(state: StateFeature, position: Position, bounds = getStateBounds(state)): boolean {
@@ -63,13 +78,14 @@ export function buildRegionalPreview(state: StateFeature, selectedDayIndex: numb
   const regionalHeightScale = Math.min(30000, (north - south) * 111320 * 0.025);
   if (!(east > west && north > south)) throw new Error(`State ${state.properties.code} has no usable boundary area.`);
   const hotspots: ActivityGlowFrame = { type: 'FeatureCollection', features: [] };
+  const samplePoints = buildDemoFrame(selectedDayIndex).observations.features;
   let seed = Number(state.properties.fips) + 1;
   const nextRandom = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
   // Fixed, clearly synthetic positions; daily sample intensity changes independently.
   for (let attempt = 0; attempt < 6000 && hotspots.features.length < 32; attempt += 1) {
     const position = [west + nextRandom() * (east - west), south + nextRandom() * (north - south)];
     if (!stateContainsCoordinate(state, position, bounds)) continue;
-    const intensity = 0.25 + (Math.sin(hotspots.features.length * 1.7 + selectedDayIndex * 0.65 + Number(state.properties.fips) * 0.23) + 1) * 0.3;
+    const intensity = sampleTickActivityAtCoordinate(position, samplePoints);
     hotspots.features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: position },
       properties: { intensity, display_height: 20, is_example: true } });
   }

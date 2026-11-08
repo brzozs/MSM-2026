@@ -139,7 +139,7 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertIn("timezone=GMT", url)
             self.assertIn("wind_speed_unit=ms", url)
             return weather_response()
-        result = fetch_weather(LOCATIONS, 1, NOW, requester=response)
+        result = fetch_weather(LOCATIONS, NOW.date(), 1, NOW, requester=response)
         self.assertEqual(result["status"], "available")
         location = result["locations"][0]
         self.assertEqual(location["longitude"], -73.69)
@@ -160,7 +160,7 @@ class ProviderAdapterTests(unittest.TestCase):
             else:
                 payload["hourly"]["soil_temperature_6cm"][0] = float("nan")
             with self.subTest(malformed=malformed), self.assertRaises(SourceError):
-                fetch_weather(LOCATIONS, 1, NOW, requester=lambda *args, **kwargs: payload)
+                fetch_weather(LOCATIONS, NOW.date(), 1, NOW, requester=lambda *args, **kwargs: payload)
 
     def test_tick_records_enforce_license_privacy_precision_and_utc_provenance(self):
         records, exclusions = normalize_inaturalist_records([
@@ -183,6 +183,43 @@ class ProviderAdapterTests(unittest.TestCase):
         self.assertFalse(result["window_complete"])
         self.assertEqual(result["status"], "partial")
         self.assertFalse(result["cohort_compatible"])
+
+    def test_a_failed_later_tick_page_keeps_the_records_already_fetched(self):
+        def response(url, headers=None):
+            page_number = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["page"][0]
+            if page_number == "2":
+                raise SourceError("api.inaturalist.org connection failed")
+            return {"total_results": 201, "results": [tick_record(id=identifier) for identifier in range(1, 201)]}
+        result = fetch_tick_observations([-74, 42, -73, 43], NOW, requester=response)
+        self.assertEqual(len(result["observations"]), 200)
+        self.assertEqual(result["status"], "partial")
+        self.assertFalse(result["window_complete"])
+        self.assertEqual(result["fetched_records"], 200)
+        self.assertEqual(result["reported_total"], 201)
+        self.assertIn("Tick observation request failed on page 2", result["errors"])
+
+    def test_a_failed_first_tick_page_is_unavailable_without_inventing_counts(self):
+        def failing(url, headers=None):
+            raise SourceError("api.inaturalist.org connection failed")
+        result = fetch_tick_observations([-74, 42, -73, 43], NOW, requester=failing)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["observations"], [])
+        self.assertFalse(result["window_complete"])
+        self.assertEqual(result["fetched_records"], 0)
+        self.assertIsNone(result["reported_total"])
+        self.assertIn("Tick observation request failed on page 1", result["errors"])
+
+    def test_weather_requests_the_pinned_dates_and_rejects_a_different_provider_window(self):
+        requested_queries = []
+        def response(url, headers=None):
+            requested_queries.append(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query))
+            return weather_response(2)
+        fetch_weather(LOCATIONS, NOW.date(), 2, NOW, requester=response)
+        self.assertEqual(requested_queries[0]["start_date"], ["2026-11-07"])
+        self.assertEqual(requested_queries[0]["end_date"], ["2026-11-08"])
+        self.assertNotIn("forecast_days", requested_queries[0])
+        with self.assertRaises(SourceError):
+            fetch_weather(LOCATIONS, NOW.date() + timedelta(days=1), 2, NOW, requester=response)
 
     def test_bird_authentication_failure_stops_remaining_guild_requests(self):
         call_count = 0
@@ -208,13 +245,13 @@ class ProviderAdapterTests(unittest.TestCase):
         payload = weather_response()
         payload["hourly_units"] = []
         with self.assertRaises(SourceError):
-            fetch_weather(LOCATIONS, 1, NOW, requester=lambda *args, **kwargs: payload)
+            fetch_weather(LOCATIONS, NOW.date(), 1, NOW, requester=lambda *args, **kwargs: payload)
 
     def test_duplicate_weather_timestamps_are_rejected_at_the_adapter_boundary(self):
         payload = weather_response()
         payload["hourly"]["time"][1] = payload["hourly"]["time"][0]
         with self.assertRaises(SourceError):
-            fetch_weather(LOCATIONS, 1, NOW, requester=lambda *args, **kwargs: payload)
+            fetch_weather(LOCATIONS, NOW.date(), 1, NOW, requester=lambda *args, **kwargs: payload)
 
     def test_malformed_optional_tick_records_are_excluded_without_aborting_the_source(self):
         result = fetch_tick_observations([-74, 42, -73, 43], NOW, requester=lambda *args, **kwargs: {

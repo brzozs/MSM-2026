@@ -193,14 +193,19 @@ def fetch_bird_observations(region_code, api_key, retrieved_at, requester=None):
     return result
 
 
-def fetch_weather(locations, forecast_days, retrieved_at, requester=None):
+def fetch_weather(locations, forecast_start_date, forecast_days, retrieved_at, requester=None):
     if not 1 <= len(locations) <= MAXIMUM_WEATHER_LOCATIONS or type(forecast_days) is not int or not 1 <= forecast_days <= 7:
         raise ValueError("Weather requires 1–64 locations and 1–7 forecast days")
+    if type(forecast_start_date) is not date:
+        raise ValueError("Weather requires a pinned UTC forecast_start_date (datetime.date)")
+    forecast_end_date = forecast_start_date + timedelta(days=forecast_days - 1)
+    expected_first_hour = datetime.combine(forecast_start_date, datetime.min.time(), tzinfo=timezone.utc)
     requester = requester or request_json
     query_parameters = urllib.parse.urlencode({
         "latitude": ",".join(str(location["latitude"]) for location in locations),
         "longitude": ",".join(str(location["longitude"]) for location in locations),
-        "hourly": ",".join(WEATHER_FIELDS), "forecast_days": forecast_days,
+        "hourly": ",".join(WEATHER_FIELDS),
+        "start_date": forecast_start_date.isoformat(), "end_date": forecast_end_date.isoformat(),
         "timezone": "GMT", "wind_speed_unit": "ms", "cell_selection": "land",
     })
     payload = requester(f"https://api.open-meteo.com/v1/forecast?{query_parameters}")
@@ -228,6 +233,8 @@ def fetch_weather(locations, forecast_days, retrieved_at, requester=None):
         try:
             for index, timestamp in enumerate(timestamps):
                 normalized_time = parse_utc_hour(timestamp + ":00Z")
+                if not normalized_hours and normalized_time != expected_first_hour:
+                    raise ValueError("Weather response does not start at the pinned forecast window")
                 if normalized_hours and normalized_time != parse_utc_hour(normalized_hours[-1]["time"]) + timedelta(hours=1):
                     raise ValueError("Weather timestamps must be distinct consecutive UTC hours")
                 hour = {"time": utc_timestamp(normalized_time), **{normalized_name: hourly_values[field][index]
@@ -247,6 +254,7 @@ def fetch_weather(locations, forecast_days, retrieved_at, requester=None):
             "requested_longitude": requested_location["longitude"], "latitude": coordinate[1], "longitude": coordinate[0],
             "hours": normalized_hours})
     return {"provider": "open_meteo", "status": "available", "retrieved_at": utc_timestamp(retrieved_at),
+        "forecast_start_date": forecast_start_date.isoformat(), "forecast_end_date": forecast_end_date.isoformat(),
         "model": "best_match", "model_initialization_at": None,
         "model_note": "Provider model initialization is not exposed in this response; not suitable for predictive backtesting.",
         "soil_temperature_depth_cm": 6, "soil_moisture_depth_cm": [1, 3],
@@ -341,37 +349,44 @@ def fetch_tick_observations(bounds, retrieved_at, requester=None, maximum_pages=
         "terms_url": "https://www.inaturalist.org/pages/api+recommended+practices"}
     raw_records = []
     expected_total = None
-    try:
-        for page_number in range(1, maximum_pages + 1):
-            parameters = {"taxon_id": 51672, "quality_grade": "research", "license": "cc0,cc-by", "geo": "true", "place_id": 1,
-                "d1": window_start.isoformat(), "d2": window_end.isoformat(), "swlng": west, "swlat": south,
-                "nelng": east, "nelat": north, "per_page": 200, "page": page_number, "order_by": "id", "order": "asc"}
+    failed_page_number = None
+    for page_number in range(1, maximum_pages + 1):
+        parameters = {"taxon_id": 51672, "quality_grade": "research", "license": "cc0,cc-by", "geo": "true", "place_id": 1,
+            "d1": window_start.isoformat(), "d2": window_end.isoformat(), "swlng": west, "swlat": south,
+            "nelng": east, "nelat": north, "per_page": 200, "page": page_number, "order_by": "id", "order": "asc"}
+        # Only the request and its shape check may fail per page; earlier valid pages are kept.
+        try:
             payload = requester("https://api.inaturalist.org/v1/observations?" + urllib.parse.urlencode(parameters))
             if not isinstance(payload, dict) or type(payload.get("total_results")) is not int or not isinstance(payload.get("results"), list):
                 raise SourceError("Invalid iNaturalist response")
-            if expected_total is None:
-                expected_total = payload["total_results"]
-            if payload["total_results"] != expected_total:
-                result["errors"].append("Source result count changed during pagination")
-            raw_records.extend(payload["results"])
-            if len(raw_records) >= expected_total:
-                result["window_complete"] = not result["errors"] and len(raw_records) == expected_total
-                break
-            if not payload["results"] or len(payload["results"]) < 200:
-                break
-        result["observations"], result["exclusions"] = normalize_inaturalist_records(raw_records)
-        raw_identifiers = [record["id"] for record in raw_records
-                           if isinstance(record, dict) and type(record.get("id")) is int and record["id"] > 0]
-        if len(raw_identifiers) != len(raw_records) or len(set(raw_identifiers)) != len(raw_identifiers):
-            result["window_complete"] = False
-            result["errors"].append("Invalid or duplicate source IDs prevent a complete observation window")
-        result["reported_total"] = expected_total
-        result["fetched_records"] = len(raw_records)
+        except SourceError:
+            failed_page_number = page_number
+            result["errors"].append(f"Tick observation request failed on page {page_number}")
+            break
+        if expected_total is None:
+            expected_total = payload["total_results"]
+        if payload["total_results"] != expected_total:
+            result["errors"].append("Source result count changed during pagination")
+        raw_records.extend(payload["results"])
+        if len(raw_records) >= expected_total:
+            result["window_complete"] = not result["errors"] and len(raw_records) == expected_total
+            break
+        if not payload["results"] or len(payload["results"]) < 200:
+            break
+    result["observations"], result["exclusions"] = normalize_inaturalist_records(raw_records)
+    raw_identifiers = [record["id"] for record in raw_records
+                       if isinstance(record, dict) and type(record.get("id")) is int and record["id"] > 0]
+    if len(raw_identifiers) != len(raw_records) or len(set(raw_identifiers)) != len(raw_identifiers):
+        result["window_complete"] = False
+        result["errors"].append("Invalid or duplicate source IDs prevent a complete observation window")
+    result["reported_total"] = expected_total
+    result["fetched_records"] = len(raw_records)
+    if failed_page_number == 1:
+        result["status"] = "unavailable"
+    elif failed_page_number is not None:
+        result["status"] = "partial"
+    else:
         result["status"] = "available" if result["window_complete"] else "partial"
         if not result["window_complete"]:
             result["errors"].append("Observation query was not complete within the bounded page budget")
-    except SourceError:
-        result["errors"].append("Tick observation request failed")
-        result["status"] = "unavailable"
-        result["window_complete"] = False
     return result

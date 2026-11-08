@@ -20,6 +20,9 @@ export interface SourceStatus {
   data_retrieved_at?: string;
   cache_hit_batches?: number;
   batches_fetched?: number;
+  /** Weather only: UTC forecast window pinned once at run start (YYYY-MM-DD). */
+  forecast_start_date?: string;
+  forecast_end_date?: string;
   window_complete?: boolean;
   displayed_record_count?: number;
   source_query_eligible_record_count?: number;

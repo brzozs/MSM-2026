@@ -1,0 +1,656 @@
+{
+  "baseline": "f56e614 + working performance changes",
+  "checks": [
+    {
+      "name": "desktop keyboard panel focus",
+      "status": "completed",
+      "detail": "Focus returned to trigger and then selector"
+    },
+    {
+      "name": "desktop layer controls",
+      "status": "completed",
+      "detail": [
+        {
+          "label": "Bird migration",
+          "on": {
+            "pathogen": "none",
+            "color": [
+              "interpolate",
+              [
+                "linear"
+              ],
+              [
+                "get",
+                "sample_tick_activity"
+              ],
+              0,
+              "#6e8b51",
+              0.35,
+              "#8b854a",
+              0.7,
+              "#aa743b",
+              1,
+              "#b15c2e"
+            ]
+          },
+          "off": {
+            "pathogen": "none",
+            "color": [
+              "interpolate",
+              [
+                "linear"
+              ],
+              [
+                "get",
+                "sample_tick_activity"
+              ],
+              0,
+              "#6e8b51",
+              0.35,
+              "#8b854a",
+              0.7,
+              "#aa743b",
+              1,
+              "#b15c2e"
+            ]
+          }
+        },
+        {
+          "label": "Tick activity",
+          "on": {
+            "pathogen": "none",
+            "color": [
+              "interpolate",
+              [
+                "linear"
+              ],
+              [
+                "get",
+                "sample_tick_activity"
+              ],
+              0,
+              "#6e8b51",
+              0.35,
+              "#8b854a",
+              0.7,
+              "#aa743b",
+              1,
+              "#b15c2e"
+            ]
+          },
+          "off": {
+            "pathogen": "none",
+            "color": [
+              "literal",
+              "#42573c"
+            ]
+          }
+        },
+        {
+          "label": "Pathogen context",
+          "on": {
+            "pathogen": "none",
+            "color": [
+              "literal",
+              "#42573c"
+            ]
+          },
+          "off": {
+            "pathogen": "none",
+            "color": [
+              "literal",
+              "#42573c"
+            ]
+          }
+        },
+        {
+          "label": "Community exposure",
+          "on": {
+            "pathogen": "none",
+            "color": [
+              "literal",
+              "#365b54"
+            ]
+          },
+          "off": {
+            "pathogen": "none",
+            "color": [
+              "literal",
+              "#42573c"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "state drilldowns and city zoom",
+      "status": "completed",
+      "detail": [
+        {
+          "code": "NY",
+          "zoom": 5.604494019038623,
+          "center": {
+            "lng": -75.809168,
+            "lat": 42.79967291423645
+          },
+          "countyLabels": 11,
+          "features": 2288,
+          "cityVisibility": "none"
+        },
+        {
+          "code": "TX",
+          "zoom": 4.640401579447519,
+          "center": {
+            "lng": -100.08340800000002,
+            "lat": 31.32091633240455
+          },
+          "countyLabels": 15,
+          "features": 2117,
+          "cityVisibility": "none"
+        },
+        {
+          "code": "CA",
+          "zoom": 4.753983945977981,
+          "center": {
+            "lng": -119.27432299999998,
+            "lat": 37.42133156581781
+          },
+          "countyLabels": 9,
+          "features": 1676,
+          "cityVisibility": "none"
+        },
+        {
+          "code": "AK",
+          "zoom": 2.768149337870302,
+          "center": {
+            "lng": -150.08403702035986,
+            "lat": 62.96671780797615
+          },
+          "countyLabels": 8,
+          "features": 385,
+          "cityVisibility": "none"
+        },
+        {
+          "code": "HI",
+          "zoom": 6.341860256889728,
+          "center": {
+            "lng": -157.53201349999995,
+            "lat": 20.584038252251062
+          },
+          "countyLabels": 5,
+          "features": 168,
+          "cityVisibility": "none"
+        },
+        {
+          "code": "DC",
+          "zoom": 10,
+          "center": {
+            "lng": -77.01457599999998,
+            "lat": 38.8936696736767
+          },
+          "countyLabels": 1,
+          "features": 2,
+          "cityVisibility": "none"
+        }
+      ]
+    },
+    {
+      "name": "timeline dates and play pause",
+      "status": "completed",
+      "detail": [
+        0.5757758812364727,
+        0.6907750806996523,
+        0.7842188353124718,
+        0.7507442576508743,
+        0.6060949646438132,
+        0.41830177900005977,
+        0.5562549398428083
+      ]
+    },
+    {
+      "name": "rapid state changes retain latest geography",
+      "status": "completed",
+      "detail": {
+        "features": 2288
+      }
+    },
+    {
+      "name": "desktop accessibility scan",
+      "status": "completed",
+      "detail": []
+    },
+    {
+      "name": "responsive 320x568",
+      "status": "completed",
+      "detail": {
+        "layout": {
+          "horizontalOverflow": false,
+          "verticalOverflow": false,
+          "active": "<select id=\"state-selector\" aria-label=\"Choose a state\"><option value=\"\">Choose a state</option><option value=\"AL\">Alabama</option><option value=\"AK\">Alaska</option><option value=\"AZ\">Arizona</option><option value=\"AR\">Arkansas</option><option value=\"CA\">California</option><option value=\"CO\">Colorado</option><option value=\"CT\">Connecticut</option><option value=\"DE\">Delaware</option><option value=\"DC\">District of Columbia</option><option value=\"FL\">Florida</option><option value=\"GA\">Georgia</option><option value=\"HI\">Hawaii</option><option value=\"ID\">Idaho</option><option value=\"IL\">Illinois</option><option value=\"IN\">Indiana</option><option value=\"IA\">Iowa</option><option value=\"KS\">Kansas</option><option value=\"KY\">Kentucky</option><option value=\"LA\">Louisiana</option><option value=\"ME\">Maine</option><option value=\"MD\">Maryland</option><option value=\"MA\">Massachusetts</option><option value=\"MI\">Michigan</option><option value=\"MN\">Minnesota</option><option value=\"MS\">Mississippi</option><option value=\"MO\">Missouri</option><option value=\"MT\">Montana</option><option value=\"NE\">Nebraska</option><option value=\"NV\">Nevada</option><option value=\"NH\">New Hampshire</option><option value=\"NJ\">New Jersey</option><option value=\"NM\">New Mexico</option><option value=\"NY\">New York</option><option value=\"NC\">North Carolina</option><option value=\"ND\">North Dakota</option><option value=\"OH\">Ohio</option><option value=\"OK\">Oklahoma</option><option value=\"OR\">Oregon</option><option value=\"PA\">Pennsylvania</option><option value=\"RI\">Rhode Island</option><option value=\"SC\">South Carolina</option><option value=\"SD\">South Dakota</option><option value=\"TN\">Tennessee</option><option value=\"TX\">Texas</option><option value=\"UT\">Utah</option><option value=\"VT\">Vermont</option><option value=\"VA\">Virginia</option><option value=\"WA\">Washington</option><option value=\"WV\">West Virginia</option><option value=\"WI\">Wisconsin</option><option value=\"WY\">Wyoming</option></select>",
+          "rects": {
+            ".layer-panel": {
+              "x": 148,
+              "y": 218,
+              "width": 154,
+              "height": 198,
+              "bottom": 416
+            },
+            ".time-bar": {
+              "x": 18,
+              "y": 450,
+              "width": 284,
+              "height": 92,
+              "bottom": 542
+            },
+            ".map-navigation": {
+              "x": 262,
+              "y": 236,
+              "width": 40,
+              "height": 102,
+              "bottom": 338
+            },
+            ".state-focus-heading": {
+              "x": 18,
+              "y": 86,
+              "width": 284,
+              "height": 70.5,
+              "bottom": 156.5
+            },
+            ".map-legend": {
+              "x": 20,
+              "y": 219,
+              "width": 115,
+              "height": 119,
+              "bottom": 338
+            }
+          }
+        },
+        "violations": []
+      }
+    },
+    {
+      "name": "responsive 360x640",
+      "status": "completed",
+      "detail": {
+        "layout": {
+          "horizontalOverflow": false,
+          "verticalOverflow": false,
+          "active": "<select id=\"state-selector\" aria-label=\"Choose a state\"><option value=\"\">Choose a state</option><option value=\"AL\">Alabama</option><option value=\"AK\">Alaska</option><option value=\"AZ\">Arizona</option><option value=\"AR\">Arkansas</option><option value=\"CA\">California</option><option value=\"CO\">Colorado</option><option value=\"CT\">Connecticut</option><option value=\"DE\">Delaware</option><option value=\"DC\">District of Columbia</option><option value=\"FL\">Florida</option><option value=\"GA\">Georgia</option><option value=\"HI\">Hawaii</option><option value=\"ID\">Idaho</option><option value=\"IL\">Illinois</option><option value=\"IN\">Indiana</option><option value=\"IA\">Iowa</option><option value=\"KS\">Kansas</option><option value=\"KY\">Kentucky</option><option value=\"LA\">Louisiana</option><option value=\"ME\">Maine</option><option value=\"MD\">Maryland</option><option value=\"MA\">Massachusetts</option><option value=\"MI\">Michigan</option><option value=\"MN\">Minnesota</option><option value=\"MS\">Mississippi</option><option value=\"MO\">Missouri</option><option value=\"MT\">Montana</option><option value=\"NE\">Nebraska</option><option value=\"NV\">Nevada</option><option value=\"NH\">New Hampshire</option><option value=\"NJ\">New Jersey</option><option value=\"NM\">New Mexico</option><option value=\"NY\">New York</option><option value=\"NC\">North Carolina</option><option value=\"ND\">North Dakota</option><option value=\"OH\">Ohio</option><option value=\"OK\">Oklahoma</option><option value=\"OR\">Oregon</option><option value=\"PA\">Pennsylvania</option><option value=\"RI\">Rhode Island</option><option value=\"SC\">South Carolina</option><option value=\"SD\">South Dakota</option><option value=\"TN\">Tennessee</option><option value=\"TX\">Texas</option><option value=\"UT\">Utah</option><option value=\"VT\">Vermont</option><option value=\"VA\">Virginia</option><option value=\"WA\">Washington</option><option value=\"WV\">West Virginia</option><option value=\"WI\">Wisconsin</option><option value=\"WY\">Wyoming</option></select>",
+          "rects": {
+            ".layer-panel": {
+              "x": 148,
+              "y": 218,
+              "width": 194,
+              "height": 270,
+              "bottom": 488
+            },
+            ".time-bar": {
+              "x": 18,
+              "y": 522,
+              "width": 324,
+              "height": 92,
+              "bottom": 614
+            },
+            ".map-navigation": {
+              "x": 302,
+              "y": 308,
+              "width": 40,
+              "height": 102,
+              "bottom": 410
+            },
+            ".state-focus-heading": {
+              "x": 18,
+              "y": 86,
+              "width": 324,
+              "height": 70.5,
+              "bottom": 156.5
+            },
+            ".map-legend": {
+              "x": 20,
+              "y": 291,
+              "width": 115,
+              "height": 119,
+              "bottom": 410
+            }
+          }
+        },
+        "violations": []
+      }
+    },
+    {
+      "name": "responsive 390x844",
+      "status": "completed",
+      "detail": {
+        "layout": {
+          "horizontalOverflow": false,
+          "verticalOverflow": false,
+          "active": "<select id=\"state-selector\" aria-label=\"Choose a state\"><option value=\"\">Choose a state</option><option value=\"AL\">Alabama</option><option value=\"AK\">Alaska</option><option value=\"AZ\">Arizona</option><option value=\"AR\">Arkansas</option><option value=\"CA\">California</option><option value=\"CO\">Colorado</option><option value=\"CT\">Connecticut</option><option value=\"DE\">Delaware</option><option value=\"DC\">District of Columbia</option><option value=\"FL\">Florida</option><option value=\"GA\">Georgia</option><option value=\"HI\">Hawaii</option><option value=\"ID\">Idaho</option><option value=\"IL\">Illinois</option><option value=\"IN\">Indiana</option><option value=\"IA\">Iowa</option><option value=\"KS\">Kansas</option><option value=\"KY\">Kentucky</option><option value=\"LA\">Louisiana</option><option value=\"ME\">Maine</option><option value=\"MD\">Maryland</option><option value=\"MA\">Massachusetts</option><option value=\"MI\">Michigan</option><option value=\"MN\">Minnesota</option><option value=\"MS\">Mississippi</option><option value=\"MO\">Missouri</option><option value=\"MT\">Montana</option><option value=\"NE\">Nebraska</option><option value=\"NV\">Nevada</option><option value=\"NH\">New Hampshire</option><option value=\"NJ\">New Jersey</option><option value=\"NM\">New Mexico</option><option value=\"NY\">New York</option><option value=\"NC\">North Carolina</option><option value=\"ND\">North Dakota</option><option value=\"OH\">Ohio</option><option value=\"OK\">Oklahoma</option><option value=\"OR\">Oregon</option><option value=\"PA\">Pennsylvania</option><option value=\"RI\">Rhode Island</option><option value=\"SC\">South Carolina</option><option value=\"SD\">South Dakota</option><option value=\"TN\">Tennessee</option><option value=\"TX\">Texas</option><option value=\"UT\">Utah</option><option value=\"VT\">Vermont</option><option value=\"VA\">Virginia</option><option value=\"WA\">Washington</option><option value=\"WV\">West Virginia</option><option value=\"WI\">Wisconsin</option><option value=\"WY\">Wyoming</option></select>",
+          "rects": {
+            ".layer-panel": {
+              "x": 148,
+              "y": 218,
+              "width": 224,
+              "height": 474,
+              "bottom": 692
+            },
+            ".time-bar": {
+              "x": 18,
+              "y": 726,
+              "width": 354,
+              "height": 92,
+              "bottom": 818
+            },
+            ".map-navigation": {
+              "x": 332,
+              "y": 512,
+              "width": 40,
+              "height": 102,
+              "bottom": 614
+            },
+            ".state-focus-heading": {
+              "x": 18,
+              "y": 86,
+              "width": 354,
+              "height": 70.5,
+              "bottom": 156.5
+            },
+            ".map-legend": {
+              "x": 20,
+              "y": 495,
+              "width": 115,
+              "height": 119,
+              "bottom": 614
+            }
+          }
+        },
+        "violations": []
+      }
+    },
+    {
+      "name": "responsive 667x375",
+      "status": "completed",
+      "detail": {
+        "layout": {
+          "horizontalOverflow": false,
+          "verticalOverflow": true,
+          "active": "<select id=\"state-selector\" aria-label=\"Choose a state\"><option value=\"\">Choose a state</option><option value=\"AL\">Alabama</option><option value=\"AK\">Alaska</option><option value=\"AZ\">Arizona</option><option value=\"AR\">Arkansas</option><option value=\"CA\">California</option><option value=\"CO\">Colorado</option><option value=\"CT\">Connecticut</option><option value=\"DE\">Delaware</option><option value=\"DC\">District of Columbia</option><option value=\"FL\">Florida</option><option value=\"GA\">Georgia</option><option value=\"HI\">Hawaii</option><option value=\"ID\">Idaho</option><option value=\"IL\">Illinois</option><option value=\"IN\">Indiana</option><option value=\"IA\">Iowa</option><option value=\"KS\">Kansas</option><option value=\"KY\">Kentucky</option><option value=\"LA\">Louisiana</option><option value=\"ME\">Maine</option><option value=\"MD\">Maryland</option><option value=\"MA\">Massachusetts</option><option value=\"MI\">Michigan</option><option value=\"MN\">Minnesota</option><option value=\"MS\">Mississippi</option><option value=\"MO\">Missouri</option><option value=\"MT\">Montana</option><option value=\"NE\">Nebraska</option><option value=\"NV\">Nevada</option><option value=\"NH\">New Hampshire</option><option value=\"NJ\">New Jersey</option><option value=\"NM\">New Mexico</option><option value=\"NY\">New York</option><option value=\"NC\">North Carolina</option><option value=\"ND\">North Dakota</option><option value=\"OH\">Ohio</option><option value=\"OK\">Oklahoma</option><option value=\"OR\">Oregon</option><option value=\"PA\">Pennsylvania</option><option value=\"RI\">Rhode Island</option><option value=\"SC\">South Carolina</option><option value=\"SD\">South Dakota</option><option value=\"TN\">Tennessee</option><option value=\"TX\">Texas</option><option value=\"UT\">Utah</option><option value=\"VT\">Vermont</option><option value=\"VA\">Virginia</option><option value=\"WA\">Washington</option><option value=\"WV\">West Virginia</option><option value=\"WI\">Wisconsin</option><option value=\"WY\">Wyoming</option></select>",
+          "rects": {
+            ".layer-panel": {
+              "x": 399,
+              "y": 218,
+              "width": 250,
+              "height": 40,
+              "bottom": 258
+            },
+            ".time-bar": {
+              "x": 18,
+              "y": 422,
+              "width": 631,
+              "height": 92,
+              "bottom": 514
+            },
+            ".map-navigation": {
+              "x": 609,
+              "y": 208,
+              "width": 40,
+              "height": 102,
+              "bottom": 310
+            },
+            ".state-focus-heading": {
+              "x": 18,
+              "y": 86,
+              "width": 631,
+              "height": 70.5,
+              "bottom": 156.5
+            },
+            ".map-legend": {
+              "x": 20,
+              "y": 191,
+              "width": 115,
+              "height": 119,
+              "bottom": 310
+            }
+          }
+        },
+        "violations": []
+      }
+    },
+    {
+      "name": "responsive 768x1024",
+      "status": "completed",
+      "detail": {
+        "layout": {
+          "horizontalOverflow": false,
+          "verticalOverflow": false,
+          "active": "<h2 id=\"state-focus-title\" tabindex=\"-1\">New York</h2>",
+          "rects": {
+            ".layer-panel": {
+              "x": 26,
+              "y": 112,
+              "width": 220,
+              "height": 476.375,
+              "bottom": 588.375
+            },
+            ".time-bar": {
+              "x": 255,
+              "y": 900,
+              "width": 418,
+              "height": 96,
+              "bottom": 996
+            },
+            ".map-navigation": {
+              "x": 697,
+              "y": 752,
+              "width": 45,
+              "height": 117,
+              "bottom": 869
+            },
+            ".state-focus-heading": {
+              "x": 399.6953125,
+              "y": 91,
+              "width": 148.609375,
+              "height": 75.796875,
+              "bottom": 166.796875
+            },
+            ".map-legend": {
+              "x": 28,
+              "y": 840,
+              "width": 135,
+              "height": 129,
+              "bottom": 969
+            }
+          }
+        },
+        "violations": []
+      }
+    },
+    {
+      "name": "responsive 1024x768",
+      "status": "completed",
+      "detail": {
+        "layout": {
+          "horizontalOverflow": false,
+          "verticalOverflow": false,
+          "active": "<h2 id=\"state-focus-title\" tabindex=\"-1\">New York</h2>",
+          "rects": {
+            ".layer-panel": {
+              "x": 26,
+              "y": 112,
+              "width": 220,
+              "height": 428,
+              "bottom": 540
+            },
+            ".time-bar": {
+              "x": 337,
+              "y": 644,
+              "width": 510,
+              "height": 96,
+              "bottom": 740
+            },
+            ".map-navigation": {
+              "x": 953,
+              "y": 496,
+              "width": 45,
+              "height": 117,
+              "bottom": 613
+            },
+            ".state-focus-heading": {
+              "x": 527.6953125,
+              "y": 91,
+              "width": 148.609375,
+              "height": 75.796875,
+              "bottom": 166.796875
+            },
+            ".map-legend": {
+              "x": 28,
+              "y": 584,
+              "width": 135,
+              "height": 129,
+              "bottom": 713
+            }
+          }
+        },
+        "violations": []
+      }
+    },
+    {
+      "name": "failure states-http",
+      "status": "completed",
+      "detail": {
+        "text": "VectorCast ecological map\nChoose a region\nThe map boundaries could not load. Refresh the page to try again.\nVectorCast\nEcological early warning\nUnited States\nNational overview\nExplore the map\nChoose a state\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11",
+        "fallback": false,
+        "loading": "The map boundaries could not load. Refresh the page to try again.",
+        "disabledControls": [],
+        "state": ""
+      }
+    },
+    {
+      "name": "failure states-schema",
+      "status": "completed",
+      "detail": {
+        "text": "",
+        "fallback": false,
+        "disabledControls": []
+      }
+    },
+    {
+      "name": "failure counties-http",
+      "status": "completed",
+      "detail": {
+        "text": "VectorCast ecological map\nChoose a region\nNatural Earth | U.S. Census Bureau\n\nCounty risk labels could not load. Refresh to retry.\n\nVectorCast\nEcological early warning\nUnited States\nNational overview\nExplore the map\nChoose a state\nAlabama\nAlaska\nArizona\nArkansas\nCalifornia\nColorado\nConnecticut\nDelaware\nDistrict of Columbia\nFlorida\nGeorgia\nHawaii\nIdaho\nIllinois\nIndiana\nIowa\nKansas\nKentucky\nLouisiana\nMaine\nMaryland\nMassachusetts\nMichigan\nMinnesota\nMississippi\nMissouri\nMontana\nNebraska\nNevada\nNew Hampshire\nNew Jersey\nNew Mexico\nNew York\nNorth Carolina\nNorth Dakota\nOhio\nOklahoma\nOregon\nPennsylvania\nRhode Island\nSouth Carolina\nSouth Dakota\nTennessee\nTexas\nUtah\nVermont\nVirginia\nWashington\nWest Virginia\nWisconsin\nWyoming\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11",
+        "fallback": false,
+        "disabledControls": [
+          false,
+          false,
+          false
+        ],
+        "state": ""
+      }
+    },
+    {
+      "name": "failure region-http",
+      "status": "completed",
+      "detail": {
+        "text": "VectorCast ecological map\nChoose a region\nNatural Earth | U.S. Census Bureau\n\nCounty and town boundaries could not load. Refresh to retry.\n\nVectorCast\nEcological early warning\nExplore the map\nChoose a state\nAlabama\nAlaska\nArizona\nArkansas\nCalifornia\nColorado\nConnecticut\nDelaware\nDistrict of Columbia\nFlorida\nGeorgia\nHawaii\nIdaho\nIllinois\nIndiana\nIowa\nKansas\nKentucky\nLouisiana\nMaine\nMaryland\nMassachusetts\nMichigan\nMinnesota\nMississippi\nMissouri\nMontana\nNebraska\nNevada\nNew Hampshire\nNew Jersey\nNew Mexico\nNew York\nNorth Carolina\nNorth Dakota\nOhio\nOklahoma\nOregon\nPennsylvania\nRhode Island\nSouth Carolina\nSouth Dakota\nTennessee\nTexas\nUtah\nVermont\nVirginia\nWashington\nWest Virginia\nWisconsin\nWyoming\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11\nAll states\nNew York\n\nRegional detail · Nov 8 · Preview data\n\nBird movement\nIllustrative flock + wind\nTick activity\nIllustrative heatmap\nQuesting weather\nNot connected\nHealth + exposure\nNot connected",
+        "fallback": false,
+        "disabledControls": [
+          false,
+          false,
+          false
+        ],
+        "state": "NY"
+      }
+    },
+    {
+      "name": "failure countries-json",
+      "status": "completed",
+      "detail": {
+        "text": "VectorCast ecological map\nChoose a region\nNatural Earth | U.S. Census Bureau\nVectorCast\nEcological early warning\nUnited States\nNational overview\nExplore the map\nChoose a state\nAlabama\nAlaska\nArizona\nArkansas\nCalifornia\nColorado\nConnecticut\nDelaware\nDistrict of Columbia\nFlorida\nGeorgia\nHawaii\nIdaho\nIllinois\nIndiana\nIowa\nKansas\nKentucky\nLouisiana\nMaine\nMaryland\nMassachusetts\nMichigan\nMinnesota\nMississippi\nMissouri\nMontana\nNebraska\nNevada\nNew Hampshire\nNew Jersey\nNew Mexico\nNew York\nNorth Carolina\nNorth Dakota\nOhio\nOklahoma\nOregon\nPennsylvania\nRhode Island\nSouth Carolina\nSouth Dakota\nTennessee\nTexas\nUtah\nVermont\nVirginia\nWashington\nWest Virginia\nWisconsin\nWyoming\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11",
+        "fallback": false,
+        "disabledControls": [
+          false,
+          false,
+          false
+        ],
+        "state": ""
+      }
+    },
+    {
+      "name": "failure countries-network",
+      "status": "completed",
+      "detail": {
+        "text": "VectorCast ecological map\nChoose a region\nNatural Earth | U.S. Census Bureau\n\nThe base map could not load. Refresh the page to try again.\n\nVectorCast\nEcological early warning\nUnited States\nNational overview\nExplore the map\nChoose a state\nAlabama\nAlaska\nArizona\nArkansas\nCalifornia\nColorado\nConnecticut\nDelaware\nDistrict of Columbia\nFlorida\nGeorgia\nHawaii\nIdaho\nIllinois\nIndiana\nIowa\nKansas\nKentucky\nLouisiana\nMaine\nMaryland\nMassachusetts\nMichigan\nMinnesota\nMississippi\nMissouri\nMontana\nNebraska\nNevada\nNew Hampshire\nNew Jersey\nNew Mexico\nNew York\nNorth Carolina\nNorth Dakota\nOhio\nOklahoma\nOregon\nPennsylvania\nRhode Island\nSouth Carolina\nSouth Dakota\nTennessee\nTexas\nUtah\nVermont\nVirginia\nWashington\nWest Virginia\nWisconsin\nWyoming\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11",
+        "fallback": true,
+        "disabledControls": [
+          true,
+          true,
+          true
+        ],
+        "state": ""
+      }
+    },
+    {
+      "name": "failure webgl-disabled",
+      "status": "completed",
+      "detail": {
+        "text": "VectorCast ecological map\nChoose a region\n\nThe interactive map needs WebGL. You can still choose a state to explore the preview.\n\nVectorCast\nEcological early warning\nExplore the map\nChoose a state\nAlabama\nAlaska\nArizona\nArkansas\nCalifornia\nColorado\nConnecticut\nDelaware\nDistrict of Columbia\nFlorida\nGeorgia\nHawaii\nIdaho\nIllinois\nIndiana\nIowa\nKansas\nKentucky\nLouisiana\nMaine\nMaryland\nMassachusetts\nMichigan\nMinnesota\nMississippi\nMissouri\nMontana\nNebraska\nNevada\nNew Hampshire\nNew Jersey\nNew Mexico\nNew York\nNorth Carolina\nNorth Dakota\nOhio\nOklahoma\nOregon\nPennsylvania\nRhode Island\nSouth Carolina\nSouth Dakota\nTennessee\nTexas\nUtah\nVermont\nVirginia\nWashington\nWest Virginia\nWisconsin\nWyoming\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11\nAll states\nNew York\n\nRegional detail · Nov 8 · Preview data\n\nBird movement\nIllustrative flock + wind\nTick activity\nIllustrative heatmap\nQuesting weather\nNot connected\nHealth + exposure\nNot connected",
+        "fallback": true,
+        "disabledControls": [
+          true,
+          true,
+          true
+        ],
+        "state": "NY"
+      }
+    },
+    {
+      "name": "webgl context loss and restoration",
+      "status": "completed",
+      "detail": {
+        "fallback": false,
+        "text": "VectorCast ecological map\nChoose a region\nNatural Earth | U.S. Census Bureau\nVectorCast\nEcological early warning\nUnited States\nNational overview\nExplore the map\nChoose a state\nAlabama\nAlaska\nArizona\nArkansas\nCalifornia\nColorado\nConnecticut\nDelaware\nDistrict of Columbia\nFlorida\nGeorgia\nHawaii\nIdaho\nIllinois\nIndiana\nIowa\nKansas\nKentucky\nLouisiana\nMaine\nMaryland\nMassachusetts\nMichigan\nMinnesota\nMississippi\nMissouri\nMontana\nNebraska\nNevada\nNew Hampshire\nNew Jersey\nNew Mexico\nNew York\nNorth Carolina\nNorth Dakota\nOhio\nOklahoma\nOregon\nPennsylvania\nRhode Island\nSouth Carolina\nSouth Dakota\nTennessee\nTexas\nUtah\nVermont\nVirginia\nWashington\nWest Virginia\nWisconsin\nWyoming\nLayers\nPreview\nBird migration\nNorthbound flocks + wind\nTick activity\nPreview activity surface\nPathogen context\nCoverage preview\nCommunity exposure\nLayer preview\n\nSelect a state to explore its regional evidence.\n\nIllustrative tick risk\nLower\nHigher\n% = preview index · Not measured risk\n↑\nNorthbound illustrative wind\nPreview timeline\n7 days · UTC\nThu\n05\nFri\n06\nSat\n07\nToday\n08\nMon\n09\nTue\n10\nWed\n11"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "url": "http://127.0.0.1:5184/",
+      "message": "Cannot read properties of undefined (reading 'code')"
+    }
+  ],
+  "screenshots": [
+    "02-state-NY.png",
+    "03-new-york-city-detail.png",
+    "02-state-TX.png",
+    "02-state-CA.png",
+    "02-state-AK.png",
+    "02-state-HI.png",
+    "02-state-DC.png",
+    "04-national-320x568.png",
+    "05-regional-320x568.png",
+    "06-panel-320x568.png",
+    "04-national-360x640.png",
+    "05-regional-360x640.png",
+    "06-panel-360x640.png",
+    "04-national-390x844.png",
+    "05-regional-390x844.png",
+    "06-panel-390x844.png",
+    "04-national-667x375.png",
+    "05-regional-667x375.png",
+    "06-panel-667x375.png",
+    "04-national-768x1024.png",
+    "05-regional-768x1024.png",
+    "06-panel-768x1024.png",
+    "04-national-1024x768.png",
+    "05-regional-1024x768.png",
+    "06-panel-1024x768.png",
+    "07-failure-states-http.png",
+    "07-failure-states-schema.png",
+    "07-failure-counties-http.png",
+    "07-failure-region-http.png",
+    "07-failure-countries-json.png",
+    "07-failure-countries-network.png",
+    "07-failure-webgl-disabled.png",
+    "08-context-loss.png"
+  ]
+}

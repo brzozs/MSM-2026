@@ -1,0 +1,48 @@
+[
+  {
+    "name": "desktop-to-mobile resize",
+    "detail": {
+      "zoom": 5.604494019038623,
+      "padding": {
+        "top": 175,
+        "bottom": 195,
+        "left": 65,
+        "right": 65
+      },
+      "minimumX": -90.60180487278333,
+      "maximumX": 459.00234484910544,
+      "viewportWidth": 390
+    }
+  },
+  {
+    "name": "mobile clear selection with selector focused",
+    "detail": {
+      "activeTag": "BODY",
+      "activeClass": "",
+      "insideHiddenPanel": false
+    }
+  },
+  {
+    "name": "touch layer toggle",
+    "passed": true
+  },
+  {
+    "name": "simultaneous county and regional errors",
+    "detail": [
+      {
+        "text": "County and town boundaries could not load. Refresh to retry.",
+        "x": 570.875,
+        "y": 220,
+        "width": 298.25,
+        "height": 26
+      },
+      {
+        "text": "County risk labels could not load. Refresh to retry.",
+        "x": 596.5390625,
+        "y": 220,
+        "width": 246.921875,
+        "height": 26
+      }
+    ]
+  }
+]

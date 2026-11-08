@@ -4,10 +4,10 @@ import json
 import math
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .model import MODEL_VERSION, calculate_activity_components, parse_utc_hour, summarize_weather_day, validated_number
+from .model import MODEL_VERSION, calculate_activity_components, summarize_weather_day, validated_number
 from .sources import public_coordinate, utc_timestamp
 from .weather_grid import MAXIMUM_GRID_LOCATIONS
 
@@ -20,6 +20,7 @@ PUBLIC_SOURCE_FIELDS = (
     "exclusions", "errors", "bounds", "place_id", "request_completed_at", "data_retrieved_at",
     "cache_hit_batches", "batches_fetched", "collection_note", "query_region_code", "published_region_code",
     "spatial_subset_note", "unassigned_observation_count", "source_query_eligible_record_count",
+    "forecast_start_date", "forecast_end_date",
 )
 SAMPLING_METADATA_FIELDS = ("state_code", "state_fips", "sampling_spacing_km", "sampling_is_fallback")
 
@@ -74,7 +75,9 @@ def build_snapshot(locations, weather, bird_evidence, tick_evidence, generated_a
     weather_data_time = datetime.fromisoformat(weather.get("data_retrieved_at", weather["retrieved_at"]).replace("Z", "+00:00"))
     if weather_data_time.tzinfo is None or weather_data_time > generated_at:
         raise ValueError("Weather data retrieval time must be known and no later than snapshot generation")
-    start_date = parse_utc_hour(generated_at.replace(minute=0, second=0, microsecond=0).isoformat()).date()
+    if not isinstance(weather.get("forecast_start_date"), str):
+        raise ValueError("Weather must declare the forecast_start_date pinned at collection start")
+    start_date = date.fromisoformat(weather["forecast_start_date"])
     weather_locations = weather.get("locations", [])
     if weather.get("status") != "available" or len(weather_locations) != len(locations):
         raise ValueError("A complete weather response is required before publication")

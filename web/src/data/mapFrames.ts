@@ -27,6 +27,8 @@ const activityCenters = [
   [-74, 42], [-71.5, 43], [-76.5, 40.5], [-78, 37.5], [-81, 35],
   [-84, 33], [-87, 36], [-90, 34], [-92, 39], [-89, 43],
   [-84, 42], [-97, 32], [-100, 38], [-105, 40], [-121, 39], [-122, 45],
+  [-149.9, 61.2], [-147.7, 64.8], [-134.4, 58.3],
+  [-157.8, 21.3], [-155.1, 19.7], [-159.5, 22],
 ];
 const migrationRoutes: readonly MigrationRoute[] = [
   [[-82, 26, 460000], [-83, 38, 640000], [-71, 47, 460000]],
@@ -86,19 +88,22 @@ export function buildStateActivityFrame(stateBoundaries: StateBoundaries, select
   return {
     type: 'FeatureCollection',
     features: stateBoundaries.features.map((state) => {
-      const [stateLongitude, stateLatitude] = state.properties.center;
       // A display fixture sampled from the same synthetic hotspots as the glow.
       // This is not a state aggregation of observations or an ecological risk model.
-      const sampleTickActivity = samplePoints.reduce((highestActivity, point) => {
-        const longitudeDistance = (point.geometry.coordinates[0] - stateLongitude) * Math.cos(stateLatitude * Math.PI / 180);
-        const latitudeDistance = point.geometry.coordinates[1] - stateLatitude;
-        const proximity = Math.exp(-(longitudeDistance ** 2 + latitudeDistance ** 2) / 18);
-        return Math.max(highestActivity, point.properties.intensity * proximity);
-      }, 0);
+      const sampleTickActivity = sampleTickActivityAtCoordinate(state.properties.center, samplePoints);
       return { ...state, properties: { ...state.properties, sample_tick_activity: sampleTickActivity,
         display_height: baseStateHeightMeters + sampleTickActivity * (maximumStateHeightMeters - baseStateHeightMeters), is_example: true } };
     }),
   };
+}
+
+export function sampleTickActivityAtCoordinate(position: Position, samplePoints: FeatureCollection<Point, DemoPointProperties>['features']): number {
+  return samplePoints.reduce((highestActivity, point) => {
+    const longitudeDistance = (point.geometry.coordinates[0] - position[0]) * Math.cos(position[1] * Math.PI / 180);
+    const latitudeDistance = point.geometry.coordinates[1] - position[1];
+    const proximity = Math.exp(-(longitudeDistance ** 2 + latitudeDistance ** 2) / 18);
+    return Math.max(highestActivity, point.properties.intensity * proximity);
+  }, 0);
 }
 
 export function getBirdFeatures(elapsedSeconds: number, selectedDayIndex: number, routes: readonly MigrationRoute[] = migrationRoutes): FeatureCollection<Point, DemoBirdProperties> {
