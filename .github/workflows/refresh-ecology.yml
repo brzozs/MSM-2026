@@ -44,8 +44,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$EBIRD_API_KEY" ]; then
-            echo '::error::Add the backend-only EBIRD_API_KEY repository secret before activating refreshes.'
-            exit 1
+            echo '::warning::eBird sightings are unavailable; measured migration uses the public BirdCast archive.'
           fi
           set +e
           python3 -u -m pipeline --region US --output pipeline/output/latest.json
@@ -54,8 +53,13 @@ jobs:
           case "$refresh_exit_code" in
             0) ;;
             2) echo '::warning::Usable data published with explicit partial/unavailable observation sources.' ;;
-            *) echo '::error::Collection failed. The previously deployed site remains available.'; exit 1 ;;
+            *)
+              echo '::warning::Collection failed; trying fresh verified cache with marked spatial estimates.'
+              python3 -m pipeline.recover_cached_atlas || exit 1
+              ;;
           esac
+      - name: Attach measured migration evidence
+        run: python3 -u -m pipeline.measured_migration
       - name: Stage public data and build the site
         env:
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}

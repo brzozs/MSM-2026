@@ -2,6 +2,16 @@
 
 National collector for [issue #13](https://github.com/brzozs/MSM-2026/issues/13). Python 3.11 or newer is sufficient; no packages need installing.
 
+### Source forecasts, coverage gaps and measured migration
+
+If a national collection stops at the weather provider's quota, `python -m pipeline.recover_cached_atlas` can publish today's fresh, fingerprint- and integrity-checked completed batches without making another network request. Missing grid locations receive a low-confidence inverse-distance estimate of the **index**, using four source forecast locations. The nearest source must be within 1,500 km; estimates can be poor at long distances. Every inferred point carries `is_predicted`, method, source IDs and nearest distance. It has zero real weather hours and no invented peak conditions. Missing nearest inputs remain unknown. This is an explicit experimental fallback, not equivalent to a local forecast or a validated tick-population model.
+
+`python -u -m pipeline.measured_migration` attaches the latest complete UTC day's [public BirdCast NEXRAD profiles](https://aloftdata.github.io/getRad/reference/get_vpts.html). Collection is bounded to 170 U.S. radars, four concurrent requests and 8 MiB/profile; cached public profiles avoid repeated downloads. The parser uses non-gap 100 m density layers 200–3,000 m above radar altitude, at least 12 profiles and three layers/profile during civil night, calculated with [NOAA's solar equations](https://gml.noaa.gov/grad/solcalc/solareqns.PDF). Density is integrated to birds/km². Coverage and detectability vary; this is processed radar evidence, not species identification, individual tracks or tick-carriage measurements. Raw profiles stay outside public assets. Attribution: BirdCast / Cornell Lab of Ornithology; [source description](https://birdcast.org/data-interpretation/). Provider reuse terms must be confirmed before hosted redistribution.
+
+Within 150 km of a valid radar, the separate experimental `tick_prediction_index` is `weather + 0.2 × min(1, log1p(density)/log(101)) × weather × (1-weather)`. **The 0.2 coefficient is an uncalibrated product assumption**, with at most five percentage points of adjustment. It has not been validated against tick surveillance or health outcomes. Source weather suitability remains unchanged. No radar, stale evidence or insufficient coverage means weather-only; no seasonal factor substitutes for measurements. The latest measured night is held across the weather forecast dates and is not represented as a forecast of bird movement. The fully gated habitat/tick-report composite remains separate and unavailable when its inputs are missing.
+
+After either command, run `python -m pipeline.publish` and rebuild the frontend. The refresh workflow performs these stages automatically when activated; absent eBird credentials leave sightings unavailable while public radar collection remains independent. Scheduled activation still requires reviewed default-branch integration and Pages configuration. A workflow file on a task branch does not install a daily service.
+
 From the repository root:
 
 ```bash
@@ -36,11 +46,11 @@ The original UI, birds and wind remain. National state height/color and percenta
 
 The workflow requests collection at **6:17 AM and 6:17 PM America/New_York**. These are collection times, not synchronized provider release instants. It accepts collector exit 0/2 only, builds public assets, and deploys only on success, preserving the last deployed site on failure. It has no push-triggered collection or automatic full-run retries. Extra manual collections share the provider budget. GitHub schedules may be delayed, run only from the default branch, and may be disabled after 60 days of public-repository inactivity ([official schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)).
 
-Activation still requires reviewed integration into the default branch, Pages configured to use GitHub Actions, and the existing private key added as repository secret `EBIRD_API_KEY`. Those external steps have not been performed here. The key is exposed only to backend collection, never frontend build. Pages supplies its base path to the build; geography/data URLs honor that path. The existing 12-hour source freshness rule remains; delayed/failed runs can produce stale periods.
+Activation still requires reviewed integration into the default branch and Pages configured to use GitHub Actions. `EBIRD_API_KEY` is optional for sightings and stays backend-only; public measured-radar migration does not require it. Those external activation steps have not been performed here. Provider reuse terms for hosted migration summaries must also be confirmed. Pages supplies its base path to the build; geography/data URLs honor that path. The existing 12-hour source freshness rule remains; delayed/failed runs can produce stale periods.
 
 ## Credentials
 
-The backend reads `EBIRD_API_KEY` from the process environment first, then from **`pipeline/.env.local`**, which is ignored by Git. The local credential supplied for this task was moved out of `web/.env.local` into that backend-only file. Never put the key in a `VITE_` variable or a browser request.
+The backend reads `EBIRD_API_KEY` from the process environment first, then from **`pipeline/.env.local`**, which is ignored by Git. A separate checkout must supply its own backend configuration; a key is not included in the repository. Never put the key in a `VITE_` variable or a browser request.
 
 For a separate checkout, copy `.env.example` to `.env.local`, restrict it with `chmod 600 pipeline/.env.local`, and enter the key privately in an editor. Do not put a key in a command argument, source file, issue, fixture or snapshot. In GitHub Actions, the same name should come from a repository secret, not a committed file.
 
@@ -100,6 +110,8 @@ The self-contained [TypeScript contract](contracts.ts) describes `EcologyAtlasMa
 | `unavailable_layers` | Withhold unsupported layers and show their reason. |
 
 The national overview omits detailed peak-condition/factor objects to keep the landing payload smaller; load a state's snapshot for these. Every state file uses its own weather points and observation subset. A report exactly on a shared border is assigned once using the lexicographically first state code. Source-query totals keep their original U.S./provider scope; `displayed_record_count` refers to the state's eligible displayed subset. Records outside the bundled state land geometry are counted as unassigned, rather than attributed to the wrong state.
+
+The timeline initially selects today's UTC forecast when available. After initialization, only a user's date-button click changes the selected date. Background refreshes, midnight, state selection and layer toggles preserve it. If a new collection drops that date, the map withholds its weather values and asks the user to select an available day; it never substitutes a different forecast silently. Bird motion has its own clock, pauses while hidden or under reduced motion, and does not restart when the selected day changes within the same migration season.
 
 Keep collector output outside public assets and use `python3 -m pipeline.publish` after success. The frontend now loads that published atlas; original flight/wind remains explicitly illustrative. Do not copy the weather-cache directory into the site. Public data must retain source attributions and terms; eBird data are not relabeled as CC BY.
 

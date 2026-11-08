@@ -12,9 +12,8 @@ export function createStateLabelHeightExpression(showTickActivity: boolean): Exp
   return ['+', showTickActivity ? ['get', 'display_height'] : 45000, 4000];
 }
 
-export function createStateLabelText(showTickActivity: boolean): ExpressionSpecification {
-  return showTickActivity ? ['concat', ['get', 'code'], '\n',
-    ['case', ['==', ['get', 'suitability_percent'], null], '—', ['concat', ['to-string', ['get', 'suitability_percent']], '%']]] : ['get', 'code'];
+export function createStateLabelText(): ExpressionSpecification {
+  return ['get', 'code'];
 }
 
 export function createStateColorExpression(showTickActivity: boolean): ExpressionSpecification {
@@ -31,7 +30,7 @@ export function createMapStyle(stateBoundaries: StateBoundaries, baseUrl = impor
     light: { anchor: 'viewport', color: '#f4edce', intensity: 0.6, position: [1.15, 220, 40] },
     sources: {
       countries: { type: 'geojson', data: `${baseUrl}data/countries.geojson`, attribution: '<a href="https://www.naturalearthdata.com/">Natural Earth</a>' },
-      states: { type: 'geojson', data: initialData.states, promoteId: 'code', attribution: '<a href="https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html">U.S. Census Bureau</a> · <a href="https://open-meteo.com/">Open-Meteo · CC BY 4.0</a>' },
+      states: { type: 'geojson', data: initialData.states, promoteId: 'code', attribution: '<a href="https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html">U.S. Census Bureau</a> · <a href="https://open-meteo.com/">Open-Meteo · CC BY 4.0</a> · <a href="https://birdcast.org/data-interpretation/">BirdCast / Cornell</a>' },
       'state-label-points': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       'county-label-points': { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, promoteId: 'geoid' },
       'regional-boundaries': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
@@ -54,15 +53,18 @@ export function createMapStyle(stateBoundaries: StateBoundaries, baseUrl = impor
         visibility: 'none', 'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'], 'text-size': 11, 'text-max-width': 9, 'text-padding': 10,
         'text-allow-overlap': false, 'text-ignore-placement': false, 'symbol-height-offset': 20,
       }, paint: { 'text-color': '#cbd9be', 'text-opacity': 0.8, 'text-halo-color': '#203629', 'text-halo-width': 1 } },
-      { id: 'pathogen-context', type: 'line', source: 'states', filter: ['in', ['get', 'code'], ['literal', ['NY', 'PA', 'MA', 'CT', 'WI', 'MN']]], layout: { visibility: 'none' }, paint: { 'line-color': '#c3a6a1', 'line-width': 2, 'line-opacity': 0.8 } },
       { id: 'state-labels', type: 'symbol', source: 'state-label-points', minzoom: 1.2, layout: {
-        'text-field': createStateLabelText(true), 'text-font': ['Manrope Variable'], 'text-size': 10,
-        'text-variable-anchor': ['center', 'top', 'bottom', 'right', 'left', 'top-right', 'bottom-right', 'top-left', 'bottom-left'],
-        'text-radial-offset': ['case', ['in', ['get', 'code'], ['literal', ['MD', 'DC']]], 3.5, 0.4],
+        'text-field': ['get', 'code'], 'text-font': ['Manrope Variable'], 'text-size': 10,
+        'text-offset': ['match', ['get', 'code'], 'MD', ['literal', [0, -0.9]], 'DC', ['literal', [0, 0.9]], ['literal', [0, 0]]],
         'text-line-height': 1.4, 'text-padding': 4, 'text-max-width': 12, 'symbol-height-offset': createStateLabelHeightExpression(true),
-        'text-allow-overlap': false, 'text-ignore-placement': false,
+        'text-allow-overlap': true, 'text-ignore-placement': true,
         'symbol-sort-key': ['match', ['get', 'code'], 'MD', 0, 'DC', 1, 2],
       }, paint: { 'text-color': '#f4f5df', 'text-opacity': 0.95, 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
+      { id: 'state-risk-labels', type: 'symbol', source: 'state-label-points', minzoom: 3.9,
+        filter: ['!=', ['get', 'suitability_percent'], null], layout: {
+          'text-field': ['concat', ['to-string', ['get', 'suitability_percent']], '% risk'], 'text-font': ['Manrope Variable'],
+          'text-size': 10, 'text-offset': [0, 1.5], 'text-padding': 8, 'symbol-height-offset': createStateLabelHeightExpression(true),
+        }, paint: { 'text-color': '#f4f5df', 'text-opacity': ['interpolate', ['linear'], ['zoom'], 3.9, 0, 4.7, 0.95, 5.4, 0.95, 6.4, 0], 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
       { id: 'county-labels', type: 'symbol', source: 'county-label-points', filter: ['==', ['get', 'kind'], 'county'], layout: {
         visibility: 'none', 'text-field': ['get', 'name'], 'text-font': ['Manrope Variable'],
         'text-size': ['interpolate', ['linear'], ['zoom'], 3, 11, 8, 14, 14, 18],

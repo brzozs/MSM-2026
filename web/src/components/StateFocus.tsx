@@ -10,8 +10,10 @@ export default function StateFocus({ selectedState, selectedDate, snapshot, erro
   useEffect(() => { headingRef.current?.focus(); }, [selectedState.code]);
   const frame = snapshot?.frames.find((candidate) => candidate.date === selectedDate);
   const validPoints = frame?.weather_suitability.features.filter((point) => point.properties.questing_suitability !== null) ?? [];
-  const averageSuitability = validPoints.length ? validPoints.reduce((total, point) => total + point.properties.questing_suitability!, 0) / validPoints.length : null;
-  const referenceConditions = validPoints[0]?.properties.conditions_at_peak;
+  const averageSuitability = validPoints.length ? validPoints.reduce((total, point) => total + (point.properties.tick_prediction_index ?? point.properties.questing_suitability!), 0) / validPoints.length : null;
+  const predictedCount = validPoints.filter((point) => point.properties.is_predicted).length;
+  const migrationCount = validPoints.filter((point) => point.properties.migration_adjustment_status === 'measured').length;
+  const referenceConditions = validPoints.find((point) => point.properties.conditions_at_peak)?.properties.conditions_at_peak;
   const soilTemperature = referenceConditions?.soil_temperature_c;
   const humidity = referenceConditions?.relative_humidity_percent;
   return <>
@@ -22,10 +24,9 @@ export default function StateFocus({ selectedState, selectedDate, snapshot, erro
     </section>
     <div className="state-source-status" aria-label="Regional data status">
       {error ? <span role="alert">{error}</span> : !snapshot ? <span role="status">Loading state evidence…</span> : <>
-        <span><strong>Bird activity</strong>{snapshot.observations.birds.features.length} reports · {snapshot.sources.birds.status}</span>
-        <span><strong>Tick activity</strong>{snapshot.observations.ticks.features.length} report{snapshot.observations.ticks.features.length === 1 ? '' : 's'} · {averageSuitability === null ? 'weather unavailable' : `${Math.round(averageSuitability * 100)}/100 weather suitability`}</span>
+        <span><strong>Bird migration</strong>{migrationCount ? `${migrationCount}/${validPoints.length} locations supported by measured radar` : 'Measured migration unavailable'} · latest measured night</span>
+        <span><strong>Tick activity</strong>{averageSuitability === null ? 'Index unavailable' : `${Math.round(averageSuitability * 100)}% index`} · {predictedCount ? `${predictedCount}/${validPoints.length} spatial estimates · low confidence` : 'Source weather forecasts'}</span>
         <span title="Conditions at peak suitability for the first available weather reference sample"><strong>Questing weather</strong>Soil {soilTemperature == null ? 'unavailable' : `${soilTemperature.toFixed(1)}°C`} · RH {humidity == null ? 'unavailable' : `${Math.round(humidity)}%`} · reference sample</span>
-        <span><strong>Health + exposure</strong>Not connected</span>
       </>}
     </div>
   </>;

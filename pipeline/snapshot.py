@@ -21,6 +21,7 @@ PUBLIC_SOURCE_FIELDS = (
     "cache_hit_batches", "batches_fetched", "collection_note", "query_region_code", "published_region_code",
     "spatial_subset_note", "unassigned_observation_count", "source_query_eligible_record_count",
     "forecast_start_date", "forecast_end_date",
+    "source_forecast_location_count", "predicted_location_count", "prediction_note",
 )
 SAMPLING_METADATA_FIELDS = ("state_code", "state_fips", "sampling_spacing_km", "sampling_is_fallback")
 
@@ -158,7 +159,14 @@ def write_snapshot_atomically(snapshot, output_path, secret_values=()):
             properties = feature["properties"]
             score = validated_number(properties["questing_suitability"], "questing_suitability", 0, 1)
             validated_number(properties["questing_index_0_to_100"], "questing_index_0_to_100", 0, 100)
-            if score is not None and properties["valid_weather_hours"] < 18:
+            predicted = properties.get('is_predicted') is True
+            if predicted:
+                if properties.get('prediction_method') != 'four_neighbor_inverse_distance_v1' or properties['valid_weather_hours'] != 0 or properties.get('conditions_at_peak') is not None or properties.get('factors_at_peak') is not None:
+                    raise ValueError('Spatial estimates must not contain invented weather conditions or hours')
+                validated_number(properties.get('prediction_nearest_distance_km'), 'prediction_nearest_distance_km', 0, 1500)
+                if score is not None and not properties.get('prediction_source_location_ids'):
+                    raise ValueError('A spatial estimate requires source forecast references')
+            if score is not None and not predicted and properties["valid_weather_hours"] < 18:
                 raise ValueError("Insufficient weather hours for a published suitability value")
     write_public_json_atomically(snapshot, output_path, secret_values)
 

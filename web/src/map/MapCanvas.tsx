@@ -11,20 +11,21 @@ import { createMapStyle, createStateColorExpression, createStateHeightExpression
 import { buildRegionalPreview, getStateBounds } from '../data/regionFocus';
 import { MigrationLayer } from './MigrationLayer';
 import { getSeasonalMigrationDirection } from '../data/seasonalMigration';
-import { getElapsedAnimationSeconds } from '../data/animationTiming';
-import { createSuitabilitySurfaceGrid, renderSuitabilitySurface, surfacePixelForCoordinate } from '../data/suitabilitySurface';
+import { getElapsedAnimationSeconds, startAnimationLoop } from '../data/animationTiming';
+import { createSuitabilitySurfaceGrid, interpolateSuitabilityAtCoordinate, renderSuitabilitySurface, surfacePixelForCoordinate } from '../data/suitabilitySurface';
 
 setWorkerUrl(workerUrl);
 interface MapCanvasProps {
   stateBoundaries: StateBoundaries;
   selectedStateCode: string | null;
+  selectedDate: string | null;
   weatherFrame: WeatherFrame | null;
   stateSnapshot: EcologySnapshot | null;
   visibleLayers: VisibleLayers;
   onSelectState: (stateCode: string | null) => void;
 }
 
-export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherFrame, stateSnapshot, visibleLayers, onSelectState }: MapCanvasProps) {
+export default function MapCanvas({ stateBoundaries, selectedStateCode, selectedDate, weatherFrame, stateSnapshot, visibleLayers, onSelectState }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const selectStateRef = useRef(onSelectState);
@@ -35,6 +36,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
   const heatmapDateRef = useRef('');
   const heatmapCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const migrationLayerRef = useRef<MigrationLayer | null>(null);
+  const migrationClockRef = useRef({ elapsedSeconds: 0 });
   const focusedStateZoomRef = useRef<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
       map.addLayer({ id: 'local-suitability-heatmap', type: 'raster', source: 'state-weather-heatmap',
         layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'surrounding-state-outlines');
       const migrationLayer = new MigrationLayer();
+      migrationLayer.setFrame(migrationClockRef.current.elapsedSeconds);
       migrationLayerRef.current = migrationLayer;
       map.addLayer(migrationLayer);
       setMapReady(true);
@@ -108,9 +111,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
     const previousStates = displayedStatesRef.current;
     const dayHasChanged = previousForecastDateRef.current !== weatherFrame?.date;
     previousForecastDateRef.current = weatherFrame?.date ?? null;
-    const regionalFrame = weatherFrame && selectedStateCode ? { ...weatherFrame, weather_suitability: { ...weatherFrame.weather_suitability,
-      features: weatherFrame.weather_suitability.features.filter((point) => point.properties.state_code === selectedStateCode) } } : weatherFrame;
-    const targetStates = buildEcologyMapData(stateBoundaries, regionalFrame).states;
+    const targetStates = buildEcologyMapData(stateBoundaries, weatherFrame).states;
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     let animationFrameId = 0;
     const startedAt = performance.now();
@@ -161,11 +162,18 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
     const map = mapRef.current;
     if (!map || !mapReady) return;
     const countyPoints = selectedState ? (countyLabels?.features ?? []).filter((county) => county.properties?.state_fips === selectedState.properties.fips)
-      .map((county) => ({ ...county, properties: { ...county.properties, kind: 'county' } })) : [];
+      .map((county) => {
+        const frame = stateSnapshot?.frames.find((candidate) => candidate.date === selectedDate);
+        const points = frame?.weather_suitability.features ?? [];
+        const radius = stateSnapshot?.scope.sampling_spacing_km ? stateSnapshot.scope.sampling_spacing_km * 1500 : 25000;
+        const value = county.geometry.type === 'Point' ? interpolateSuitabilityAtCoordinate(county.geometry.coordinates,
+          points.map((point) => ({ coordinate: point.geometry.coordinates, value: point.properties.tick_prediction_index ?? point.properties.questing_suitability })), radius) : null;
+        return { ...county, properties: { ...county.properties, kind: 'county', suitability_percent: value === null ? null : Math.round(value * 100) } };
+      }) : [];
     (map.getSource('county-label-points') as GeoJSONSource).setData({ type: 'FeatureCollection', features: [
       ...countyPoints, ...(regionalBoundaries?.features.filter((feature) => feature.properties?.kind !== 'county') ?? []),
     ] });
-  }, [mapReady, countyLabels, regionalBoundaries, selectedState]);
+  }, [mapReady, countyLabels, regionalBoundaries, selectedState, stateSnapshot, selectedDate]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -246,13 +254,15 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
     }
     map.setLayoutProperty('regional-town-names', 'visibility', selectedState && showCityNames ? 'visible' : 'none');
     map.setLayoutProperty('regional-town-borders', 'visibility', selectedState && showCityNames ? 'visible' : 'none');
-    map.setLayoutProperty('county-labels', 'visibility', selectedState && !showCityNames ? 'visible' : 'none');
+    map.setLayoutProperty('county-labels', 'visibility', selectedState ? 'visible' : 'none');
+    map.setLayoutProperty('county-labels', 'text-field', showCityNames
+      ? ['case', ['==', ['get', 'suitability_percent'], null], '', ['concat', ['to-string', ['get', 'suitability_percent']], '%']]
+      : ['concat', ['get', 'name'], '\n', ['case', ['==', ['get', 'suitability_percent'], null], 'Unavailable', ['concat', ['to-string', ['get', 'suitability_percent']], '% risk']]]);
     map.setLayoutProperty('local-suitability-heatmap', 'visibility', selectedState && visibleLayers.tick_activity ? 'visible' : 'none');
     for (const layerId of ['surrounding-state-outlines', 'surrounding-state-names']) {
       map.setLayoutProperty(layerId, 'visibility', selectedState ? 'visible' : 'none');
       map.setFilter(layerId, ['!=', ['get', 'code'], selectedStateCode ?? '']);
     }
-    map.setLayoutProperty('pathogen-context', 'visibility', 'none');
     migrationLayerRef.current?.setVisible(visibleLayers.bird_activity);
     const colors = createStateColorExpression(visibleLayers.tick_activity);
     map.setPaintProperty('states-raised', 'fill-extrusion-color', colors);
@@ -261,12 +271,13 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
     map.setPaintProperty('states-raised', 'fill-extrusion-height', createStateHeightExpression(visibleLayers.tick_activity));
     map.setPaintProperty('land', 'fill-color', selectedState ? '#172820' : '#293e31');
     map.setLayoutProperty('state-labels', 'visibility', selectedState ? 'none' : 'visible');
-    map.setLayoutProperty('state-labels', 'text-field', createStateLabelText(visibleLayers.tick_activity));
+    map.setLayoutProperty('state-risk-labels', 'visibility', !selectedState && visibleLayers.tick_activity ? 'visible' : 'none');
+    map.setLayoutProperty('state-labels', 'text-field', createStateLabelText());
     map.setLayoutProperty('state-labels', 'symbol-height-offset', createStateLabelHeightExpression(visibleLayers.tick_activity));
     map.setFilter('selected-state-outline', ['==', ['get', 'code'], selectedStateCode ?? '']);
   }, [mapReady, visibleLayers, selectedStateCode, selectedState, showCityNames]);
 
-  const seasonalDirection = weatherFrame ? getSeasonalMigrationDirection(weatherFrame.date) : null;
+  const seasonalDirection = selectedDate ? getSeasonalMigrationDirection(selectedDate) : null;
   useEffect(() => {
     migrationLayerRef.current?.setRegionRoute(regionalFlightRoute, !!selectedState);
     migrationLayerRef.current?.setSeasonalDirection(seasonalDirection);
@@ -275,26 +286,20 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
   useEffect(() => {
     if (!mapReady || !visibleLayers.bird_activity) return;
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let animationFrameId = 0;
-    let lastUpdate = 0;
-    const startTime = performance.now();
-    const animateBirds = (timestamp: number) => {
-      if (document.hidden || motionPreference.matches) return;
-      if (timestamp - lastUpdate > 33) {
-        migrationLayerRef.current?.setFrame(getElapsedAnimationSeconds(timestamp, startTime));
-        lastUpdate = timestamp;
-      }
-      animationFrameId = requestAnimationFrame(animateBirds);
-    };
+    let stopAnimation = () => {};
     const resumeAnimation = () => {
-      cancelAnimationFrame(animationFrameId);
-      if (motionPreference.matches) migrationLayerRef.current?.setFrame(0);
-      else if (!document.hidden) animationFrameId = requestAnimationFrame(animateBirds);
+      stopAnimation();
+      if (!document.hidden && !motionPreference.matches) {
+        stopAnimation = startAnimationLoop(migrationClockRef.current,
+          (elapsedSeconds) => migrationLayerRef.current?.setFrame(elapsedSeconds),
+          { now: () => performance.now(), requestFrame: (callback) => window.requestAnimationFrame(callback),
+            cancelFrame: (frameId) => window.cancelAnimationFrame(frameId) });
+      }
     };
     resumeAnimation();
     document.addEventListener('visibilitychange', resumeAnimation);
     motionPreference.addEventListener('change', resumeAnimation);
-    return () => { cancelAnimationFrame(animationFrameId); document.removeEventListener('visibilitychange', resumeAnimation); motionPreference.removeEventListener('change', resumeAnimation); };
+    return () => { stopAnimation(); document.removeEventListener('visibilitychange', resumeAnimation); motionPreference.removeEventListener('change', resumeAnimation); };
   }, [mapReady, visibleLayers.bird_activity]);
 
   useEffect(() => {
@@ -318,7 +323,6 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, weatherF
   function resetView() { onSelectState(null); if (!selectedStateCode && mapRef.current) fitNationalView(mapRef.current); }
   return <>
     <div className="map-canvas" ref={containerRef} aria-label="Interactive ecological map of the United States" />
-    <p className="map-drag-hint">Right-drag to tilt + rotate<br /><span>Left-drag to pan · Scroll to zoom</span></p>
     {!mapReady && !mapError && <div className="map-loading" role="status">Preparing your map…</div>}
     {mapError && <div className="map-fallback"><img src={`${import.meta.env.BASE_URL}data/us-states-preview.svg`} alt="United States state boundaries" /><p role="status">{mapError}</p></div>}
     {selectedState && boundaryStatus && <p className="regional-geography-status" role="status">{boundaryStatus}</p>}

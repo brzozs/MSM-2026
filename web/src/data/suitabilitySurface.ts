@@ -2,11 +2,30 @@ import type { Position } from 'geojson';
 import type { StateBounds } from './regionFocus.ts';
 
 export const tickSuitabilityColorStops = [
-  { value: 0, color: '#46764f' }, { value: 0.2, color: '#75a05d' }, { value: 0.4, color: '#b5ad67' },
-  { value: 0.6, color: '#d99a5e' }, { value: 1, color: '#df7e44' },
+  { value: 0, color: '#6e8b51' }, { value: 0.33, color: '#8b854a' },
+  { value: 0.67, color: '#aa743b' }, { value: 1, color: '#b15c2e' },
 ];
 const earthRadiusMeters = 6371008.8;
 const radiansPerDegree = Math.PI / 180;
+
+export function interpolateSuitabilityAtCoordinate(coordinate: Position, samples: { coordinate: Position; value: number | null }[], radiusMeters: number): number | null {
+  let nearestDistance = Infinity;
+  let nearestValue: number | null = null;
+  let weightedValue = 0;
+  let totalWeight = 0;
+  for (const sample of samples) {
+    const haversine = Math.sin((sample.coordinate[1] - coordinate[1]) * radiansPerDegree / 2) ** 2
+      + Math.cos(coordinate[1] * radiansPerDegree) * Math.cos(sample.coordinate[1] * radiansPerDegree)
+      * Math.sin((sample.coordinate[0] - coordinate[0]) * radiansPerDegree / 2) ** 2;
+    const distance = 2 * earthRadiusMeters * Math.asin(Math.sqrt(Math.min(1, haversine)));
+    if (distance >= radiusMeters) continue;
+    if (distance < nearestDistance) { nearestDistance = distance; nearestValue = sample.value; }
+    if (sample.value === null) continue;
+    const weight = (1 - (distance / radiusMeters) ** 2) ** 2;
+    weightedValue += sample.value * weight; totalWeight += weight;
+  }
+  return nearestValue === null || totalWeight === 0 ? null : weightedValue / totalWeight;
+}
 
 export interface SuitabilitySurfaceGrid {
   width: number;

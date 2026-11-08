@@ -12,7 +12,10 @@ export interface PointCollection<Properties> {
 }
 
 export interface SourceStatus {
-  provider: 'open_meteo' | 'ebird' | 'inaturalist';
+  source_forecast_location_count?: number;
+  predicted_location_count?: number;
+  prediction_note?: string;
+  provider: 'open_meteo' | 'ebird' | 'inaturalist' | 'birdcast';
   status: 'available' | 'partial' | 'unavailable' | 'not_configured';
   request_started_at?: string;
   retrieved_at: string;
@@ -79,6 +82,12 @@ export interface ActivityComponents {
 }
 
 export interface SuitabilityProperties {
+  tick_prediction_index?: number | null;
+  migration_adjustment_status?: 'measured' | 'unavailable';
+  is_predicted?: boolean;
+  prediction_method?: 'four_neighbor_inverse_distance_v1';
+  prediction_nearest_distance_km?: number;
+  prediction_source_location_ids?: string[];
   location_id: string;
   name: string;
   state_code?: string;
@@ -124,7 +133,7 @@ export interface EcologySnapshot {
     weather_bounds: [number, number, number, number];
   };
   semantics: Record<string, string>;
-  sources: { weather: SourceStatus; birds: SourceStatus; ticks: SourceStatus };
+  sources: { weather: SourceStatus; birds: SourceStatus; ticks: SourceStatus; migration?: SourceStatus & { observed_date: string; valid_radar_count: number; maximum_support_km: number } };
   observations: {
     birds: PointCollection<ObservationProperties>;
     ticks: PointCollection<ObservationProperties>;
@@ -162,6 +171,10 @@ export interface EcologyAtlasManifest {
 export type OverviewSuitabilityProperties = Pick<SuitabilityProperties,
   'location_id' | 'name' | 'date' | 'questing_suitability' | 'questing_index_0_to_100' | 'valid_weather_hours' | 'is_experimental'> & {
   state_code: string;
+  tick_prediction_index?: number | null;
+  migration_adjustment_status?: 'measured' | 'unavailable';
+  is_predicted?: boolean;
+  prediction_nearest_distance_km?: number;
 };
 
 export interface EcologyOverview extends Omit<EcologySnapshot, 'frames'> {

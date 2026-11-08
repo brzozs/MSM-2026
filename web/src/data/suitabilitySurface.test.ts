@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSuitabilitySurfaceGrid, renderSuitabilitySurface } from './suitabilitySurface.ts';
+import { createSuitabilitySurfaceGrid, interpolateSuitabilityAtCoordinate, renderSuitabilitySurface } from './suitabilitySurface.ts';
 
 test('surface colors represent model values, including real zero, rather than sample density', () => {
   const grid = createSuitabilitySurfaceGrid([[0, 0]], [[-0.01, -0.01], [0.01, 0.01]], 25000, 1);
-  assert.deepEqual([...renderSuitabilitySurface(grid, [0])], [70, 118, 79, 255]);
-  assert.deepEqual([...renderSuitabilitySurface(grid, [1])], [223, 126, 68, 255]);
+  assert.deepEqual([...renderSuitabilitySurface(grid, [0])], [110, 139, 81, 255]);
+  assert.deepEqual([...renderSuitabilitySurface(grid, [1])], [177, 92, 46, 255]);
   const pairedGrid = createSuitabilitySurfaceGrid([[-0.01, 0], [0.01, 0]], [[-0.001, -0.001], [0.001, 0.001]], 25000, 1);
   const blended = renderSuitabilitySurface(pairedGrid, [0, 1]);
   assert.equal(blended[3], 255);
-  assert.ok(Math.abs(blended[0] - 199) <= 1 && Math.abs(blended[1] - 164) <= 1);
+  assert.ok(Math.abs(blended[0] - 155) <= 1 && Math.abs(blended[1] - 123) <= 1);
 });
 
 test('surface retains nearby border weather cells and leaves unsupported areas transparent', () => {
@@ -38,7 +38,7 @@ test('50 km reference samples blend across the space between grid points', () =>
     [[-0.001, -0.001], [0.001, 0.001]], 25000, 1, 50);
   const pixels = renderSuitabilitySurface(grid, [0, 1, 0, 1]);
   assert.equal(pixels[3], 255);
-  assert.ok(Math.abs(pixels[0] - 199) <= 1 && Math.abs(pixels[1] - 164) <= 1);
+  assert.ok(Math.abs(pixels[0] - 155) <= 1 && Math.abs(pixels[1] - 123) <= 1);
 });
 
 test('nearby extreme samples form a broad gradient instead of isolated color spikes', () => {
@@ -52,5 +52,13 @@ test('nearby extreme samples form a broad gradient instead of isolated color spi
 test('a missing nearest sample stays transparent rather than borrowing surrounding values', () => {
   const grid = createSuitabilitySurfaceGrid([[0, 0], [0.45, 0]], [[-0.0001, -0.0001], [0.0001, 0.0001]], 75000, 1);
   assert.deepEqual([...renderSuitabilitySurface(grid, [null, 1])], [0, 0, 0, 0]);
-  assert.deepEqual([...renderSuitabilitySurface(grid, [0, null])], [70, 118, 79, 255]);
+  assert.deepEqual([...renderSuitabilitySurface(grid, [0, null])], [110, 139, 81, 255]);
+});
+
+test('county-center percentages use bounded reference interpolation and retain unknowns and real zero', () => {
+  const samples = [{ coordinate: [-0.01, 0], value: 0 }, { coordinate: [0.01, 0], value: 1 }];
+  assert.ok(Math.abs(interpolateSuitabilityAtCoordinate([0, 0], samples, 75000)! - 0.5) < 1e-10);
+  assert.equal(interpolateSuitabilityAtCoordinate([0, 0], [{ coordinate: [0, 0], value: 0 }], 75000), 0);
+  assert.equal(interpolateSuitabilityAtCoordinate([0, 0], [{ coordinate: [0, 0], value: null }, samples[1]], 75000), null);
+  assert.equal(interpolateSuitabilityAtCoordinate([20, 20], samples, 75000), null);
 });

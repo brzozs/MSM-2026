@@ -29,7 +29,7 @@ python3 -m pipeline.publish
 npm --prefix web run dev
 ```
 
-Prepare a collected national snapshot first using the [pipeline instructions](pipeline/README.md); publication excludes all collection caches and credentials. Open the local URL Vite prints. The existing React/TypeScript/Vite map keeps its original layout, real geography, layer toggles, playable forecast timeline, zoom/reset controls and compact state details. On mobile, use Map layers to select a state or change overlays.
+Prepare a collected national snapshot first using the [pipeline instructions](pipeline/README.md); publication excludes all collection caches and credentials. Open the local URL Vite prints. The existing React/TypeScript/Vite map keeps its original layout, real geography, layer toggles, manually selected forecast dates, zoom/reset controls and compact state details. On mobile, use Map layers to select a state or change overlays.
 
 State heights and colors now use real forecast inputs and experimental weather suitability, with subtle transitions between actual UTC forecast days. Bird routes use sourced broad seasonal guidance; tracks and trails remain explicitly illustrative. State selection loads actual weather heatmaps, simple county/city labels, bird/tick report counts and compact weather details. Source freshness and unavailable inputs stay visible; pathogen/community sources remain unconnected. No disease probability is calculated.
 

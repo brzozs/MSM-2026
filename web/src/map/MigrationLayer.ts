@@ -1,9 +1,9 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
-import { buildBirdGeometry, buildWindGeometry, migrationVertexStride } from '../data/migrationGeometry';
-import { migrationRoutes, type MigrationRoute } from '../data/mapFrames';
-import { orientSeasonalRoutes, type SeasonalMigrationDirection } from '../data/seasonalMigration';
+import { buildBirdGeometry, buildWindGeometry, migrationVertexStride } from '../data/migrationGeometry.ts';
+import { migrationRoutes, type MigrationRoute } from '../data/mapFrames.ts';
+import { orientSeasonalRoutes, type SeasonalMigrationDirection } from '../data/seasonalMigration.ts';
 
-interface MeshBuffer { buffer: WebGLBuffer; vertexArray: WebGLVertexArrayObject; vertexCount: number }
+interface MeshBuffer { buffer: WebGLBuffer; vertexArray: WebGLVertexArrayObject; vertexCount: number; allocatedByteLength: number }
 interface ShaderProgram { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> }
 
 export class MigrationLayer implements CustomLayerInterface {
@@ -17,26 +17,40 @@ export class MigrationLayer implements CustomLayerInterface {
   private elapsedSeconds = 0;
   private visible = true;
   private windRadiusMeters = 0;
+  private windVertices: Float32Array = new Float32Array(0);
   private baseRoutes: readonly MigrationRoute[] = migrationRoutes;
   private seasonalDirection: SeasonalMigrationDirection = null;
   private routes: readonly MigrationRoute[] = [];
+  private regionalRoute: MigrationRoute | null = null;
+  private regionalFocus = false;
+  private birdVertices: Float32Array = new Float32Array(0);
+  private birdGeometryDirty = true;
+  private birdModelScaleMeters = 0;
 
   setRegionRoute(route: MigrationRoute | null, regionalFocus: boolean) {
+    if (this.regionalRoute === route && this.regionalFocus === regionalFocus) return;
+    this.regionalRoute = route;
+    this.regionalFocus = regionalFocus;
     this.baseRoutes = regionalFocus ? (route ? [route] : []) : migrationRoutes;
     this.routes = orientSeasonalRoutes(this.baseRoutes, this.seasonalDirection);
     this.windRadiusMeters = 0;
+    this.birdGeometryDirty = true;
     this.map?.triggerRepaint();
   }
 
   setSeasonalDirection(direction: SeasonalMigrationDirection) {
+    if (this.seasonalDirection === direction) return;
     this.seasonalDirection = direction;
     this.routes = orientSeasonalRoutes(this.baseRoutes, direction);
     this.windRadiusMeters = 0;
+    this.birdGeometryDirty = true;
     this.map?.triggerRepaint();
   }
 
   setFrame(elapsedSeconds: number) {
+    if (elapsedSeconds === this.elapsedSeconds) return;
     this.elapsedSeconds = elapsedSeconds;
+    this.birdGeometryDirty = true;
     this.map?.triggerRepaint();
   }
 
@@ -69,16 +83,23 @@ export class MigrationLayer implements CustomLayerInterface {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     const modelScaleMeters = Math.max(80, Math.min(36000, 12000 * 2 ** (3.5 - this.map.getZoom())));
-    const windRadiusMeters = Math.max(30, 2 ** (Math.round(Math.log2(modelScaleMeters * 0.55) * 4) / 4));
+    const windRadiusMeters = Math.max(30, modelScaleMeters * 0.55);
     if (windRadiusMeters !== this.windRadiusMeters) {
-      uploadMesh(gl, this.windBuffer, buildWindGeometry(windRadiusMeters, this.routes), gl.STATIC_DRAW);
+      this.windVertices = buildWindGeometry(windRadiusMeters, this.routes, this.windVertices);
+      uploadMesh(gl, this.windBuffer, this.windVertices, gl.DYNAMIC_DRAW);
       this.windRadiusMeters = windRadiusMeters;
     }
     gl.depthMask(false);
     gl.bindVertexArray(this.windBuffer.vertexArray);
     gl.drawArrays(gl.TRIANGLES, 0, this.windBuffer.vertexCount);
 
-    uploadMesh(gl, this.birdBuffer, buildBirdGeometry(this.elapsedSeconds, modelScaleMeters * 0.35, this.routes), gl.DYNAMIC_DRAW);
+    const birdModelScaleMeters = modelScaleMeters * 0.35;
+    if (this.birdGeometryDirty || birdModelScaleMeters !== this.birdModelScaleMeters) {
+      this.birdVertices = buildBirdGeometry(this.elapsedSeconds, birdModelScaleMeters, this.routes, this.elapsedSeconds, this.birdVertices);
+      uploadMesh(gl, this.birdBuffer, this.birdVertices, gl.DYNAMIC_DRAW);
+      this.birdGeometryDirty = false;
+      this.birdModelScaleMeters = birdModelScaleMeters;
+    }
     gl.depthMask(true);
     gl.bindVertexArray(this.birdBuffer.vertexArray);
     gl.drawArrays(gl.TRIANGLES, 0, this.birdBuffer.vertexCount);
@@ -97,6 +118,10 @@ export class MigrationLayer implements CustomLayerInterface {
     this.birdBuffer = null;
     this.map = null;
     this.windRadiusMeters = 0;
+    this.birdVertices = new Float32Array(0);
+    this.windVertices = new Float32Array(0);
+    this.birdGeometryDirty = true;
+    this.birdModelScaleMeters = 0;
   }
 
   private getShader(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): ShaderProgram {
@@ -172,12 +197,15 @@ function createMeshBuffer(gl: WebGL2RenderingContext): MeshBuffer {
     gl.vertexAttribPointer(location, size, gl.FLOAT, false, migrationVertexStride * 4, offset * 4);
   }
   gl.bindVertexArray(null);
-  return { buffer, vertexArray, vertexCount: 0 };
+  return { buffer, vertexArray, vertexCount: 0, allocatedByteLength: -1 };
 }
 
 function uploadMesh(gl: WebGL2RenderingContext, mesh: MeshBuffer, vertices: Float32Array, usage: number) {
   gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, vertices, usage);
+  if (mesh.allocatedByteLength !== vertices.byteLength) {
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, usage);
+    mesh.allocatedByteLength = vertices.byteLength;
+  } else gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
   mesh.vertexCount = vertices.length / migrationVertexStride;
 }
 

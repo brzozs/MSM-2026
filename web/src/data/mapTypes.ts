@@ -1,13 +1,10 @@
 import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';
-import type { EcologicalLayerId } from './contracts';
 
 export interface StateProperties { code: string; name: string; fips: string; center: [number, number] }
 export type StateBoundaries = FeatureCollection<Polygon | MultiPolygon, StateProperties>;
-export type VisibleLayers = Record<EcologicalLayerId, boolean>;
+export type VisibleLayers = Record<'bird_activity' | 'tick_activity', boolean>;
 
-export const layerDefinitions: { id: EcologicalLayerId; label: string; description: string; color: string }[] = [
-  { id: 'bird_activity', label: 'Bird migration', description: 'Sightings + seasonal flight guide', color: '#ccdbaf' },
-  { id: 'tick_activity', label: 'Tick activity', description: 'Weather-based suitability', color: '#e8b66e' },
-  { id: 'pathogen_evidence', label: 'Pathogen context', description: 'Source not connected', color: '#c3a6a1' },
-  { id: 'community_exposure', label: 'Community exposure', description: 'Source not connected', color: '#94b4bd' },
+export const layerDefinitions: { id: keyof VisibleLayers; label: string; description: string; color: string }[] = [
+  { id: 'bird_activity', label: 'Bird migration', description: 'Seasonal flight illustration', color: '#ccdbaf' },
+  { id: 'tick_activity', label: 'Tick activity', description: 'Weather + measured migration', color: '#e8b66e' },
 ];

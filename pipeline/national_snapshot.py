@@ -88,7 +88,7 @@ def publish_national_snapshot(snapshot, state_boundaries, output_path, secret_va
             "frames": [{**frame, "weather_suitability": {"type": "FeatureCollection", "features": [
                 {**feature, "properties": {key: feature["properties"][key] for key in (
                     "location_id", "name", "state_code", "date", "questing_suitability", "questing_index_0_to_100",
-                    "valid_weather_hours", "is_experimental")}} for feature in frame["weather_suitability"]["features"]]}} for frame in snapshot["frames"]]}
+                    "valid_weather_hours", "is_experimental", "is_predicted", "prediction_nearest_distance_km", "prediction_method", "prediction_source_location_ids", "tick_prediction_index", "migration_adjustment_status") if key in feature["properties"]}} for feature in frame["weather_suitability"]["features"]]}} for frame in snapshot["frames"]]}
         write_snapshot_atomically(overview, staging_directory / "overview.json", secret_values)
         os.replace(staging_directory, final_directory)
         write_public_json_atomically(manifest, output_path, secret_values)

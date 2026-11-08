@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildEcologyMapData, buildStateHeatmap, interpolateStateActivity, loadEcologyAtlas, loadStateSnapshot, snapshotIsStale } from './ecologyData.ts';
+import { buildEcologyMapData, buildStateHeatmap, interpolateStateActivity, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, snapshotIsStale } from './ecologyData.ts';
 import type { EcologyAtlasManifest, EcologyOverview, EcologySnapshot } from '../../../pipeline/contracts.ts';
 import type { StateBoundaries } from './mapTypes.ts';
 
@@ -28,6 +28,29 @@ function fixtureRequest(documents: Record<string, unknown>, requestedUrls: strin
     return new Response(JSON.stringify(documents[url] ?? {}), { status: url in documents ? 200 : 404 }); }) as typeof fetch;
 }
 
+test('initial date prefers UTC today while refreshes and midnight preserve the selected date', () => {
+  const dates = ['2026-11-07', '2026-11-08', '2026-11-09'];
+  assert.equal(retainForecastDate(null, dates, new Date('2026-11-08T02:00:00Z')), '2026-11-08');
+  assert.equal(retainForecastDate(null, dates, new Date('2026-11-10T02:00:00Z')), dates[0]);
+  assert.equal(retainForecastDate(null, [], new Date()), null);
+  assert.equal(retainForecastDate('2026-11-08', dates, new Date('2026-11-09T00:01:00Z')), '2026-11-08');
+  assert.equal(retainForecastDate('2026-11-08', ['2026-11-09', '2026-11-10']), '2026-11-08', 'an expired selection must not silently jump to another date');
+});
+
+test('rejects mixed-date, mixed-state and duplicate weather samples instead of calculating a misleading mean', async () => {
+  const atlas = { manifest, overview, manifestUrl: 'https://example.test/latest.json' };
+  const stateUrl = 'https://example.test/generation-example/US-NY.json';
+  const snapshot = { ...overview, scope: { region_code: 'US-NY' } } as unknown as EcologySnapshot;
+  for (const points of [
+    [{ ...weatherPoint(0.3), properties: { ...weatherPoint(0.3).properties, date: '2026-11-09' } }],
+    [{ ...weatherPoint(0.3), properties: { ...weatherPoint(0.3).properties, state_code: 'CA' } }],
+    [weatherPoint(0.3), weatherPoint(0.3)],
+  ]) {
+    const invalid = { ...snapshot, frames: [{ ...snapshot.frames[0], weather_suitability: { type: 'FeatureCollection', features: points } }] };
+    await assert.rejects(loadStateSnapshot(atlas, 'NY', undefined, fixtureRequest({ [stateUrl]: invalid })), /sample.*state\/date/i);
+  }
+});
+
 test('loads relative generation URLs under the hosted application path', async () => {
   const urls: string[] = [];
   const atlas = await loadEcologyAtlas('https://example.test/app/data/ecology/latest.json', undefined, fixtureRequest({
@@ -41,6 +64,7 @@ test('loads relative generation URLs under the hosted application path', async (
 test('fails explicitly on missing data and mixed overview generations', async () => {
   const url = 'https://example.test/latest.json';
   await assert.rejects(loadEcologyAtlas(url, undefined, fixtureRequest({})), /404/);
+  await assert.rejects(loadEcologyAtlas(url, undefined, (async () => new Response('<!doctype html>')) as typeof fetch), /unavailable or invalid/);
   await assert.rejects(loadEcologyAtlas(url, undefined, fixtureRequest({ [url]: manifest,
     'https://example.test/generation-example/overview.json': { ...overview, generated_at: '2026-11-07T06:00:00Z' },
   })), /generation/i);
@@ -61,6 +85,16 @@ test('retains genuine zero suitability and withholds missing samples and state m
   assert.equal(mapData.states.features[0].geometry, boundaries.features[0].geometry);
   const unavailable = buildEcologyMapData(boundaries, { ...overview.frames[0], weather_suitability: { type: 'FeatureCollection', features: [] } });
   assert.equal(unavailable.states.features[0].properties.questing_suitability, null);
+});
+
+test('the national display consumes the measured-migration index without replacing the source weather value', () => {
+  const point = { ...weatherPoint(0.5), properties: { ...weatherPoint(0.5).properties, tick_prediction_index: 0.55, migration_adjustment_status: 'measured' as const } };
+  const frame = { ...overview.frames[0], weather_suitability: { type: 'FeatureCollection' as const, features: [point] } };
+  assert.equal(buildEcologyMapData(boundaries, frame).states.features[0].properties.questing_suitability, 0.55);
+  const snapshot = { ...overview, scope: { region_code: 'US-NY' }, frames: [frame] } as unknown as EcologySnapshot;
+  assert.equal(buildStateHeatmap(snapshot, date, 'NY').model, 'measured_migration');
+  assert.equal(buildStateHeatmap(snapshot, date, 'NY').points.features[0].properties.model_value, 0.55);
+  assert.equal(point.properties.questing_suitability, 0.5);
 });
 
 test('day transitions smoothly blend values and settle exactly at the actual next day', () => {

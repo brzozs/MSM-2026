@@ -6,7 +6,7 @@ import type { TimelineDay } from './mapFrames.ts';
 export type WeatherFrame = EcologyOverview['frames'][number];
 export interface LoadedAtlas { manifest: EcologyAtlasManifest; overview: EcologyOverview; manifestUrl: string }
 export interface StateHeatmap {
-  model: 'weather_only' | 'combined' | 'unavailable';
+  model: 'weather_only' | 'combined' | 'measured_migration' | 'unavailable';
   points: FeatureCollection<Point, { model_value: number }>;
 }
 export type EcologyStateFrame = FeatureCollection<Polygon | MultiPolygon, StateProperties & {
@@ -18,7 +18,8 @@ const stateHeightRangeMeters = 275000;
 async function requestDocument(url: string, signal: AbortSignal | undefined, request: typeof fetch): Promise<unknown> {
   const response = await request(url, { signal, cache: 'no-store' });
   if (!response.ok) throw new Error(`Ecology data request failed (${response.status}).`);
-  return response.json();
+  try { return await response.json(); }
+  catch { throw new Error('Published ecology data is unavailable or invalid.'); }
 }
 
 function generationUrl(relativeUrl: string, manifestUrl: string): string {
@@ -45,13 +46,23 @@ function validateSnapshot(document: EcologyOverview | EcologySnapshot, manifest:
   }
   for (const frame of document.frames) {
     if (!Array.isArray(frame.weather_suitability?.features)) throw new Error('Ecology snapshot has invalid weather data.');
+    const locationIds = new Set<string>();
     for (const point of frame.weather_suitability.features) {
       const value = point.properties?.questing_suitability;
+      const prediction = point.properties?.tick_prediction_index;
       const coordinates = point.geometry?.coordinates;
       if (!point.properties?.location_id || (value !== null && (!Number.isFinite(value) || value < 0 || value > 1))
-        || point.geometry.type !== 'Point' || coordinates?.length !== 2 || !coordinates.every(Number.isFinite)) {
+        || point.geometry?.type !== 'Point' || coordinates?.length !== 2 || !coordinates.every(Number.isFinite)
+        || Math.abs(coordinates[0]) > 180 || Math.abs(coordinates[1]) > 90
+        || (prediction != null && (!Number.isFinite(prediction) || prediction < 0 || prediction > 1))) {
         throw new Error('Ecology snapshot has an invalid weather sample.');
       }
+      if (point.properties.date !== frame.date || locationIds.has(point.properties.location_id)
+        || !manifest.states.some((state) => state.state_code === point.properties.state_code)
+        || (document.scope.region_code !== 'US' && document.scope.region_code !== `US-${point.properties.state_code}`)) {
+        throw new Error('Ecology weather sample has a duplicate location or mismatched state/date.');
+      }
+      locationIds.add(point.properties.location_id);
     }
   }
 }
@@ -61,7 +72,9 @@ export async function loadEcologyAtlas(manifestUrl: string, signal?: AbortSignal
   if (!validMetadata(manifest) || manifest.kind !== 'ecology-atlas' || !Array.isArray(manifest.states) || !manifest.states.length
     || !Array.isArray(manifest.dates) || !manifest.dates.length || manifest.dates.length > 7
     || manifest.dates.some((date, index) => !/^\d{4}-\d{2}-\d{2}$/.test(date) || (index > 0 && date <= manifest.dates[index - 1]))
-    || typeof manifest.overview_url !== 'string') throw new Error('Invalid ecology manifest.');
+    || typeof manifest.overview_url !== 'string'
+    || manifest.states.some((state) => !/^[A-Z]{2}$/.test(state.state_code) || state.region_code !== `US-${state.state_code}` || typeof state.snapshot_url !== 'string')
+    || new Set(manifest.states.map((state) => state.state_code)).size !== manifest.states.length) throw new Error('Invalid ecology manifest.');
   if (previous?.manifestUrl === manifestUrl && JSON.stringify(previous.manifest) === JSON.stringify(manifest)) return previous;
   const overview = await requestDocument(generationUrl(manifest.overview_url, manifestUrl), signal, request) as EcologyOverview;
   validateSnapshot(overview, manifest);
@@ -88,6 +101,13 @@ export function createForecastDays(dates: string[], now = new Date()): TimelineD
     dayOfMonth: date.slice(-2), isToday: date === now.toISOString().slice(0, 10) }));
 }
 
+// Initialize once; refreshes and midnight must never change the user's date.
+export function retainForecastDate(selectedDate: string | null, availableDates: string[], now = new Date()): string | null {
+  if (selectedDate !== null) return selectedDate;
+  const today = now.toISOString().slice(0, 10);
+  return availableDates.includes(today) ? today : availableDates[0] ?? null;
+}
+
 export function buildStateHeatmap(snapshot: EcologySnapshot | null, forecastDate: string, stateCode: string): StateHeatmap {
   const empty: StateHeatmap = { model: 'unavailable', points: { type: 'FeatureCollection', features: [] } };
   if (!snapshot || snapshot.scope.region_code !== `US-${stateCode}`) return empty;
@@ -95,12 +115,12 @@ export function buildStateHeatmap(snapshot: EcologySnapshot | null, forecastDate
   if (!frame?.weather_suitability.features.length) return empty;
   const combinedAvailable = frame.weather_suitability.features.every((point) => point.properties.activity_components?.ecological_activity_index != null);
   const points: StateHeatmap['points'] = { type: 'FeatureCollection', features: frame.weather_suitability.features.flatMap((point) => {
-    const value = combinedAvailable ? point.properties.activity_components.ecological_activity_index : point.properties.questing_suitability;
+    const value = combinedAvailable ? point.properties.activity_components.ecological_activity_index : point.properties.tick_prediction_index ?? point.properties.questing_suitability;
     if (value === null) return [];
     if (!Number.isFinite(value) || value < 0 || value > 1) throw new RangeError('Heatmap values must be finite model values between zero and one.');
     return [{ type: 'Feature' as const, id: point.id, geometry: point.geometry, properties: { model_value: value } }];
   }) };
-  return { model: points.features.length ? combinedAvailable ? 'combined' : 'weather_only' : 'unavailable', points };
+  return { model: points.features.length ? combinedAvailable ? 'combined' : frame.weather_suitability.features.some((point) => point.properties.migration_adjustment_status === 'measured') ? 'measured_migration' : 'weather_only' : 'unavailable', points };
 }
 
 export function interpolateStateActivity(previous: EcologyStateFrame, next: EcologyStateFrame, progress: number): EcologyStateFrame {
@@ -127,7 +147,7 @@ export function interpolateStateActivity(previous: EcologyStateFrame, next: Ecol
 export function buildEcologyMapData(boundaries: StateBoundaries, frame: WeatherFrame | null): { states: EcologyStateFrame } {
   const stateValues = new Map<string, { total: number; count: number }>();
   for (const point of frame?.weather_suitability.features ?? []) {
-    const value = point.properties.questing_suitability;
+    const value = point.properties.tick_prediction_index ?? point.properties.questing_suitability;
     if (value === null) continue;
     const stateCode = point.properties.state_code;
     const summary = stateValues.get(stateCode) ?? { total: 0, count: 0 };
