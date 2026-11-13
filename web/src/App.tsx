@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Bird, Check, ChevronDown, Globe2, Layers2, MapPin, PanelLeftClose } from 'lucide-react';
 import { layerDefinitions } from './data/mapTypes';
 import type { StateBoundaries, VisibleLayers } from './data/mapTypes';
-import { buildStateHeatmap, createForecastDays, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, type LoadedAtlas } from './data/ecologyData';
-import type { EcologySnapshot } from '../../pipeline/contracts';
+import { buildStateHeatmap, createForecastDays, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, shouldLoadStateSnapshot, type LoadedAtlas, type StateSnapshotResult } from './data/ecologyData';
 import { getSeasonalMigrationDirection } from './data/seasonalMigration';
+import { migrationFlyways } from './data/migrationFlyways';
+import { summarizeQuestingWeather } from './data/regionalEvidence';
 import { tickSuitabilityColorStops } from './map/mapStyle';
 import MapCanvas from './map/MapCanvas';
 import StateFocus from './components/StateFocus';
@@ -20,7 +21,9 @@ export default function App() {
   const [atlas, setAtlas] = useState<LoadedAtlas | null>(null);
   const atlasRef = useRef<LoadedAtlas | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [stateResult, setStateResult] = useState<{ stateCode: string; generation: string; snapshot?: EcologySnapshot; error?: string } | null>(null);
+  const [stateResult, setStateResult] = useState<StateSnapshotResult | null>(null);
+  const stateResultRef = useRef<StateSnapshotResult | null>(null);
+  const [successfulAtlasRefreshCount, setSuccessfulAtlasRefreshCount] = useState(0);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [layerPanelOpen, setLayerPanelOpen] = useState(() => window.innerWidth > 760);
   const stateSelectorRef = useRef<HTMLButtonElement>(null);
@@ -32,7 +35,13 @@ export default function App() {
   const stateSnapshot = currentStateResult?.snapshot ?? null;
   const weatherFrame = atlas?.overview.frames.find((frame) => frame.date === activeDate) ?? null;
   const localHeatmap = useMemo(() => stateSnapshot && activeDate && selectedStateCode ? buildStateHeatmap(stateSnapshot, activeDate, selectedStateCode) : null, [stateSnapshot, activeDate, selectedStateCode]);
+  const questingWeather = useMemo(() => summarizeQuestingWeather(selectedStateCode
+    ? stateSnapshot?.frames.find((frame) => frame.date === activeDate) : weatherFrame), [selectedStateCode, stateSnapshot, activeDate, weatherFrame]);
+  const displayedModel = selectedStateCode ? localHeatmap?.model ?? 'unavailable' : questingWeather.averageSuitability === null ? 'unavailable' : 'weather_only';
+  const tickModelDescription = displayedModel === 'weather_only' ? 'Questing weather index' : 'Index unavailable';
   const seasonalDirection = activeDate ? getSeasonalMigrationDirection(activeDate) : null;
+  const migrationRouteSummary = seasonalDirection ? `Approximate corridors, not tracked birds.\n${migrationFlyways.map((flyway) =>
+    `${flyway.species}: ${seasonalDirection === 'southbound' ? flyway.breedingRegion : flyway.winteringRegion} → ${seasonalDirection === 'southbound' ? flyway.winteringRegion : flyway.breedingRegion}`).join('\n')}` : 'No seasonal migration inferred for this date.';
   const states = useMemo(() => [...(stateBoundaries?.features ?? [])].sort((first, second) => first.properties.name.localeCompare(second.properties.name)), [stateBoundaries]);
   const selectedState = states.find((state) => state.properties.code === selectedStateCode)?.properties;
 
@@ -56,6 +65,7 @@ export default function App() {
         const latestAtlas = await loadEcologyAtlas(manifestUrl, abortController.signal, fetch, atlasRef.current ?? undefined);
         if (!abortController.signal.aborted) {
           atlasRef.current = latestAtlas; setAtlas(latestAtlas); setDataError(null);
+          setSuccessfulAtlasRefreshCount((refreshCount) => refreshCount + 1);
           setSelectedDate((currentDate) => retainForecastDate(currentDate, latestAtlas.manifest.dates));
         }
       } catch (error) {
@@ -72,12 +82,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!atlas || !selectedStateCode) return;
+    if (!atlas || !selectedStateCode || !shouldLoadStateSnapshot(stateResultRef.current, selectedStateCode, atlas.manifest.generated_at)) return;
     const abortController = new AbortController();
     const stateCode = selectedStateCode;
     const generation = atlas.manifest.generated_at;
     loadStateSnapshot(atlas, stateCode, abortController.signal)
-      .then((snapshot) => { if (!abortController.signal.aborted) setStateResult({ stateCode, generation, snapshot }); })
+      .then((snapshot) => { if (!abortController.signal.aborted) {
+        const result = { stateCode, generation, snapshot };
+        stateResultRef.current = result; setStateResult(result);
+      } })
       .catch(async (error) => {
         if (abortController.signal.aborted) return;
         if (error instanceof Error && error.message.includes('(404)')) {
@@ -87,10 +100,11 @@ export default function App() {
             if (latestAtlas.manifest.generated_at !== generation) { atlasRef.current = latestAtlas; setAtlas(latestAtlas); return; }
           } catch { if (abortController.signal.aborted) return; }
         }
-        setStateResult({ stateCode, generation, error: error instanceof Error ? error.message : 'State data could not load.' });
+        const result = { stateCode, generation, error: error instanceof Error ? error.message : 'State data could not load.' };
+        stateResultRef.current = result; setStateResult(result);
       });
     return () => abortController.abort();
-  }, [atlas, selectedStateCode]);
+  }, [atlas, selectedStateCode, successfulAtlasRefreshCount]);
 
   function toggleLayer(layerId: keyof VisibleLayers) {
     setVisibleLayers((currentLayers) => ({ ...currentLayers, [layerId]: !currentLayers[layerId] }));
@@ -136,8 +150,9 @@ export default function App() {
     </aside>
 
     <div className="map-legend" aria-label="Map legend">
-      {visibleLayers.tick_activity && <><span className="legend-title">{selectedState ? 'Local tick suitability' : 'Modeled tick suitability'}</span><div className="legend-ramp" style={{ background: `linear-gradient(90deg, ${tickSuitabilityColorStops.map(({ value, color }) => `${color} ${value * 100}%`).join(', ')})` }} /><div className="legend-labels"><span>Lower</span><span>Higher</span></div><span className="legend-state-height">{selectedState ? `${localHeatmap?.model === 'combined' ? 'Bird + weather model' : localHeatmap?.model === 'measured_migration' ? 'Weather + measured migration' : localHeatmap?.model === 'weather_only' ? 'Weather-only estimate' : 'Local estimate unavailable'} · smoothed${stateSnapshot?.scope.sampling_spacing_km ? ` ${stateSnapshot.scope.sampling_spacing_km} km grid` : ' reference grid'}` : `Higher suitability = taller states${atlas?.overview.sources.weather.predicted_location_count ? ' · includes spatial estimates' : ''}`}</span></>}
-      {visibleLayers.bird_activity && <div className="legend-flyway legend-wind"><span aria-hidden="true">{seasonalDirection === 'southbound' ? '↓' : seasonalDirection === 'northbound' ? '↑' : '—'}</span>{seasonalDirection ? `Seasonal ${seasonalDirection} guide` : 'Seasonal direction not inferred'}</div>}
+      {visibleLayers.tick_activity && <><span className="legend-title">{selectedState ? 'Local tick suitability' : 'Modeled tick suitability'}</span><div className="legend-ramp" style={{ background: `linear-gradient(90deg, ${tickSuitabilityColorStops.map(({ value, color }) => `${color} ${value * 100}%`).join(', ')})` }} /><div className="legend-labels"><span>Lower</span><span>Higher</span></div><span className="legend-state-height">{selectedState ? `${tickModelDescription} · smoothed${stateSnapshot?.scope.sampling_spacing_km ? ` ${stateSnapshot.scope.sampling_spacing_km} km grid` : ' reference grid'}` : `${tickModelDescription} · higher suitability = taller states${atlas?.overview.sources.weather.predicted_location_count ? ' · includes spatial estimates' : ''}`}</span>
+      </>}
+      {visibleLayers.bird_activity && <div className="legend-flyway legend-wind" style={{ pointerEvents: 'auto' }} title={migrationRouteSummary}><span aria-hidden="true">{seasonalDirection ? '↝' : '—'}</span>{seasonalDirection ? 'Approximate migration routes' : 'Seasonal direction not inferred'}</div>}
     </div>
 
     {days.length > 0 && <TimeBar days={days} selectedDate={selectedDate} onSelectDate={setSelectedDate} />}

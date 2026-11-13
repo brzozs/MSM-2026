@@ -1,5 +1,6 @@
 import type { FeatureCollection, MultiPolygon, Point, Polygon, Position } from 'geojson';
 import type { StateBoundaries, StateProperties } from './mapTypes';
+import { migrationFlyways } from './migrationFlyways.ts';
 
 export interface TimelineDay { date: string; weekday: string; dayOfMonth: string; isToday: boolean }
 export interface DemoPointProperties { intensity: number; is_example: true }
@@ -7,7 +8,8 @@ export type StateActivityFrame = FeatureCollection<Polygon | MultiPolygon, State
 export const baseStateHeightMeters = 45000;
 export const maximumStateHeightMeters = 320000;
 export const birdWingPhaseCount = 3;
-export type MigrationRoute = readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
+export type MigrationWaypoint = readonly [number, number, number];
+export type MigrationRoute = readonly [MigrationWaypoint, MigrationWaypoint, ...MigrationWaypoint[]];
 const flockFormation = [[0, 0], [-1, 1], [1, 1], [-2, 2], [2, 2], [-3, 3], [3, 3]] as const;
 export const birdsPerFlock = flockFormation.length;
 export const flocksPerRoute = 3;
@@ -28,12 +30,7 @@ const activityCenters = [
   [-84, 33], [-87, 36], [-90, 34], [-92, 39], [-89, 43],
   [-84, 42], [-97, 32], [-100, 38], [-105, 40], [-121, 39], [-122, 45],
 ];
-export const migrationRoutes: readonly MigrationRoute[] = [
-  [[-82, 26, 460000], [-83, 38, 640000], [-71, 47, 460000]],
-  [[-96, 27, 460000], [-89, 37, 640000], [-92, 49, 460000]],
-  [[-104, 29, 460000], [-107, 38, 640000], [-105, 49, 460000]],
-  [[-117, 31, 460000], [-125, 39, 640000], [-122, 49, 460000]],
-];
+export const migrationRoutes: readonly MigrationRoute[] = migrationFlyways.map((flyway) => flyway.northboundRoute);
 export const migrationRouteCount = migrationRoutes.length;
 
 export function getMigrationRoutePosition(routeIndex: number, progress: number, routes: readonly MigrationRoute[] = migrationRoutes): [number, number, number] {
@@ -44,9 +41,20 @@ export function getMigrationRoutePosition(routeIndex: number, progress: number, 
 }
 
 function routePosition(route: MigrationRoute, progress: number): Position {
-  return [0, 1, 2].map((axis) => (1 - progress) ** 2 * route[0][axis]
-    + 2 * (1 - progress) * progress * route[1][axis]
-    + progress ** 2 * route[2][axis]);
+  if (progress === 0) return [...route[0]];
+  if (progress === 1) return [...route[route.length - 1]];
+  const segmentProgress = progress * (route.length - 1);
+  const segmentIndex = Math.min(route.length - 2, Math.floor(segmentProgress));
+  const localProgress = segmentProgress - segmentIndex;
+  const previous = route[Math.max(0, segmentIndex - 1)];
+  const departure = route[segmentIndex];
+  const destination = route[segmentIndex + 1];
+  const following = route[Math.min(route.length - 1, segmentIndex + 2)];
+  // Interpolate every geographic waypoint with a shared tangent on either side.
+  return [0, 1, 2].map((axis) => 0.5 * (2 * departure[axis]
+    + (-previous[axis] + destination[axis]) * localProgress
+    + (2 * previous[axis] - 5 * departure[axis] + 4 * destination[axis] - following[axis]) * localProgress ** 2
+    + (-previous[axis] + 3 * departure[axis] - 3 * destination[axis] + following[axis]) * localProgress ** 3));
 }
 
 export function createTimelineDays(referenceDate: Date): TimelineDay[] {
@@ -107,12 +115,13 @@ export function getBirdFeatures(elapsedSeconds: number, routes: readonly Migrati
     features: routes.flatMap((route, routeIndex) => Array.from({ length: flocksPerRoute }, (_, flockIndex) => flockFormation.map(([flockSide, flockRank], birdIndex) => {
       const progress = (elapsedSeconds * 0.022 + flockIndex / flocksPerRoute + routeIndex * 0.21) % 1;
       const position = getMigrationRoutePosition(routeIndex, progress, routes);
-      const nextPosition = routePosition(route, Math.min(1, progress + 0.001));
+      const previousPosition = routePosition(route, Math.max(0, progress - 0.00001));
+      const nextPosition = routePosition(route, Math.min(1, progress + 0.00001));
       return {
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: position },
         properties: {
-          bearing: Math.atan2((nextPosition[0] - position[0]) * Math.cos(position[1] * Math.PI / 180), nextPosition[1] - position[1]) * 180 / Math.PI,
+          bearing: Math.atan2((nextPosition[0] - previousPosition[0]) * Math.cos(position[1] * Math.PI / 180), nextPosition[1] - previousPosition[1]) * 180 / Math.PI,
           wing_phase: birdIndex % birdWingPhaseCount, route_id: routeIndex, route_progress: progress,
           flock_side: flockSide, flock_rank: flockRank, flock_id: flockIndex, is_example: true as const,
         },

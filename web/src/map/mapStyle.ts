@@ -62,7 +62,7 @@ export function createMapStyle(stateBoundaries: StateBoundaries, baseUrl = impor
       }, paint: { 'text-color': '#f4f5df', 'text-opacity': 0.95, 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
       { id: 'state-risk-labels', type: 'symbol', source: 'state-label-points', minzoom: 3.9,
         filter: ['!=', ['get', 'suitability_percent'], null], layout: {
-          'text-field': ['concat', ['to-string', ['get', 'suitability_percent']], '% risk'], 'text-font': ['Manrope Variable'],
+          'text-field': ['concat', ['to-string', ['get', 'suitability_percent']], ' index'], 'text-font': ['Manrope Variable'],
           'text-size': 10, 'text-offset': [0, 1.5], 'text-padding': 8, 'symbol-height-offset': createStateLabelHeightExpression(true),
         }, paint: { 'text-color': '#f4f5df', 'text-opacity': ['interpolate', ['linear'], ['zoom'], 3.9, 0, 4.7, 0.95, 5.4, 0.95, 6.4, 0], 'text-halo-color': '#203629', 'text-halo-width': 1.5 } },
       { id: 'county-labels', type: 'symbol', source: 'county-label-points', filter: ['==', ['get', 'kind'], 'county'], layout: {

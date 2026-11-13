@@ -3,15 +3,13 @@ import test from 'node:test';
 import { getMigrationRoutePosition, migrationRouteCount } from './mapFrames.ts';
 import { buildBirdGeometry, buildWindGeometry, migrationVertexStride } from './migrationGeometry.ts';
 
-test('every sample wind route travels north and stays above the tallest state block', () => {
+test('every illustrative wind route follows finite geography and stays above the tallest state block', () => {
   for (let routeIndex = 0; routeIndex < migrationRouteCount; routeIndex += 1) {
-    let previousLatitude = -90;
     for (let sampleIndex = 0; sampleIndex <= 50; sampleIndex += 1) {
       const [longitude, latitude, altitude] = getMigrationRoutePosition(routeIndex, sampleIndex / 50);
       assert.ok(Number.isFinite(longitude));
-      assert.ok(latitude > previousLatitude);
+      assert.ok(latitude >= -85 && latitude <= 85);
       assert.ok(altitude > 320000);
-      previousLatitude = latitude;
     }
   }
   assert.throws(() => getMigrationRoutePosition(-1, 0), RangeError);

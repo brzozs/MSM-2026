@@ -15,7 +15,7 @@ export interface SourceStatus {
   source_forecast_location_count?: number;
   predicted_location_count?: number;
   prediction_note?: string;
-  provider: 'open_meteo' | 'ebird' | 'inaturalist' | 'birdcast';
+  provider: 'open_meteo' | 'ebird' | 'inaturalist' | 'birdcast' | 'usgs_nlcd';
   status: 'available' | 'partial' | 'unavailable' | 'not_configured';
   request_started_at?: string;
   retrieved_at: string;
@@ -82,6 +82,16 @@ export interface ActivityComponents {
 }
 
 export interface SuitabilityProperties {
+  measured_migration?: {
+    radar: string;
+    coordinate: [number, number];
+    observed_date: string;
+    airborne_birds_per_square_km: number;
+    valid_night_profiles: number;
+    source_url: string;
+    distance_km: number;
+  };
+  bird_tick_context?: BirdTickContext;
   tick_prediction_index?: number | null;
   migration_adjustment_status?: 'measured' | 'unavailable';
   is_predicted?: boolean;
@@ -133,7 +143,7 @@ export interface EcologySnapshot {
     weather_bounds: [number, number, number, number];
   };
   semantics: Record<string, string>;
-  sources: { weather: SourceStatus; birds: SourceStatus; ticks: SourceStatus; migration?: SourceStatus & { observed_date: string; valid_radar_count: number; maximum_support_km: number } };
+  sources: { weather: SourceStatus; birds: SourceStatus; ticks: SourceStatus; habitat?: SourceStatus; migration?: SourceStatus & { observed_date: string; valid_radar_count: number; maximum_support_km: number } };
   observations: {
     birds: PointCollection<ObservationProperties>;
     ticks: PointCollection<ObservationProperties>;
@@ -171,6 +181,7 @@ export interface EcologyAtlasManifest {
 export type OverviewSuitabilityProperties = Pick<SuitabilityProperties,
   'location_id' | 'name' | 'date' | 'questing_suitability' | 'questing_index_0_to_100' | 'valid_weather_hours' | 'is_experimental'> & {
   state_code: string;
+  bird_tick_context?: BirdTickContext;
   tick_prediction_index?: number | null;
   migration_adjustment_status?: 'measured' | 'unavailable';
   is_predicted?: boolean;
@@ -184,4 +195,35 @@ export interface EcologyOverview extends Omit<EcologySnapshot, 'frames'> {
     outlook: 'near_term' | 'lower_confidence';
     weather_suitability: PointCollection<OverviewSuitabilityProperties>;
   }[];
+}
+
+/** Relative, conditional scenario. No tick counts or calibrated probabilities. */
+export interface RelativeScenarioRange {
+  lower: number;
+  central: number;
+  upper: number;
+}
+
+export interface BirdTickContext {
+  model_version: 'bird-tick-context-v1';
+  supported_cohort: boolean;
+  migration_pressure: number | null;
+  radar_observed_date: string | null;
+  radar_age_days: number | null;
+  stopover_weather_factor: number | null;
+  habitat: {
+    status: 'sampled' | 'unavailable' | 'not_covered';
+    land_cover_class: number | null;
+    habitat_factor: number | null;
+    year: number;
+  };
+  stopover_index: number | null;
+  detachment_window_days: [number, number];
+  detachment_timing_weight: RelativeScenarioRange | null;
+  deposition_potential: RelativeScenarioRange | null;
+  post_drop_moisture_support: number | null;
+  post_drop_persistence_index: RelativeScenarioRange | null;
+  contributes_to_current_questing: false;
+  development_status: 'outside_forecast_model' | 'unsupported';
+  missing_inputs: string[];
 }

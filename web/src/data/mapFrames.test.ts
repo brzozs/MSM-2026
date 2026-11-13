@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { birdsPerFlock, buildDemoFrame, buildStateActivityFrame, createTimelineDays, flocksPerRoute, getBirdFeatures, migrationRouteCount } from './mapFrames.ts';
+import { birdsPerFlock, buildDemoFrame, buildStateActivityFrame, createTimelineDays, flocksPerRoute, getBirdFeatures, getMigrationRoutePosition, migrationRouteCount, type MigrationRoute } from './mapFrames.ts';
 import type { StateBoundaries } from './mapTypes';
 
 test('timeline stays on UTC calendar days across the daylight-saving boundary', () => {
@@ -68,11 +68,30 @@ test('illustrative bird markers move along bounded routes with finite bearings',
   assert.notDeepEqual(startingBirds, laterBirds);
   for (const feature of laterBirds.features) {
     const [longitude, latitude] = feature.geometry.coordinates;
-    assert.ok(longitude >= -130 && longitude <= -65);
-    assert.ok(latitude >= 20 && latitude <= 55);
+    assert.ok(longitude >= -180 && longitude <= 180);
+    assert.ok(latitude >= -85 && latitude <= 85);
     assert.ok(Number.isFinite(feature.properties.bearing));
     assert.equal(feature.properties.is_example, true);
   }
+});
+
+test('migration paths pass through their departure, stopovers and destination instead of treating stopovers as control points', () => {
+  const route: MigrationRoute = [[-120, 40, 480000], [-100, 30, 560000], [-80, 40, 560000], [-60, 30, 480000]];
+  for (const [waypointIndex, waypoint] of route.entries()) {
+    assert.deepEqual(getMigrationRoutePosition(0, waypointIndex / 3, [route]), waypoint);
+  }
+  const southeastBird = getBirdFeatures(5, [route]).features[0];
+  const northeastBird = getBirdFeatures(23, [route]).features[0];
+  assert.ok(southeastBird.properties.bearing > 90 && southeastBird.properties.bearing < 180);
+  assert.ok(northeastBird.properties.bearing > 0 && northeastBird.properties.bearing < 90);
+});
+
+test('flocks turn smoothly at migration waypoints', () => {
+  const route: MigrationRoute = [[-120, 40, 480000], [-100, 30, 560000], [-80, 40, 560000], [-60, 30, 480000]];
+  const before = getBirdFeatures((1 / 3 - 0.00001) / 0.022, [route]).features[0];
+  const after = getBirdFeatures((1 / 3 + 0.00001) / 0.022, [route]).features[0];
+  assert.ok(Math.abs(before.properties.bearing - after.properties.bearing) < 0.1);
+  assert.ok(Math.abs(before.geometry.coordinates[0] - after.geometry.coordinates[0]) < 0.01);
 });
 
 test('each pathway carries three northbound flocks with shared leaders and compact V formations', () => {

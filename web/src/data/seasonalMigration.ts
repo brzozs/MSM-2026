@@ -1,4 +1,5 @@
 import type { MigrationRoute } from './mapFrames.ts';
+import { migrationFlyways } from './migrationFlyways.ts';
 
 export type SeasonalMigrationDirection = 'northbound' | 'southbound' | null;
 
@@ -21,7 +22,8 @@ export function getSeasonalMigrationDirection(forecastDate: string): SeasonalMig
   return null;
 }
 
-export function orientSeasonalRoutes(routes: readonly MigrationRoute[], direction: SeasonalMigrationDirection): readonly MigrationRoute[] {
+export function getSeasonalMigrationRoutes(direction: SeasonalMigrationDirection, isStateFocused = false): readonly MigrationRoute[] {
   if (direction === null) return [];
-  return direction === 'northbound' ? routes : routes.map((route) => [route[2], route[1], route[0]]);
+  const routes = migrationFlyways.map((flyway) => direction === 'northbound' ? flyway.northboundRoute : flyway.southboundRoute);
+  return isStateFocused ? routes.map((route) => route.map(([longitude, latitude]) => [longitude, latitude, 8000]) as unknown as MigrationRoute) : routes;
 }

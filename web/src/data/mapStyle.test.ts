@@ -22,3 +22,10 @@ test('county borders are thicker than city and town borders', () => {
   assert.ok(county?.type === 'line' && city?.type === 'line');
   assert.ok(Number(county.paint?.['line-width']) >= Number(city.paint?.['line-width']) * 2);
 });
+
+test('uncalibrated state metrics use index units instead of risk percentages', () => {
+  const style = createMapStyle({ type: 'FeatureCollection', features: [] }, '/');
+  const metricLabel = style.layers.find((layer) => layer.id === 'state-risk-labels');
+  assert.ok(metricLabel?.type === 'symbol');
+  assert.deepEqual(metricLabel.layout?.['text-field'], ['concat', ['to-string', ['get', 'suitability_percent']], ' index']);
+});

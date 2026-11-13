@@ -1,7 +1,7 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { buildBirdGeometry, buildWindGeometry, migrationVertexStride } from '../data/migrationGeometry.ts';
-import { migrationRoutes, type MigrationRoute } from '../data/mapFrames.ts';
-import { orientSeasonalRoutes, type SeasonalMigrationDirection } from '../data/seasonalMigration.ts';
+import type { MigrationRoute } from '../data/mapFrames.ts';
+import { getSeasonalMigrationRoutes, type SeasonalMigrationDirection } from '../data/seasonalMigration.ts';
 
 interface MeshBuffer { buffer: WebGLBuffer; vertexArray: WebGLVertexArrayObject; vertexCount: number; allocatedByteLength: number }
 interface ShaderProgram { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> }
@@ -18,30 +18,27 @@ export class MigrationLayer implements CustomLayerInterface {
   private visible = true;
   private windRadiusMeters = 0;
   private windVertices: Float32Array = new Float32Array(0);
-  private baseRoutes: readonly MigrationRoute[] = migrationRoutes;
   private seasonalDirection: SeasonalMigrationDirection = null;
   private routes: readonly MigrationRoute[] = [];
-  private regionalRoute: MigrationRoute | null = null;
   private regionalFocus = false;
   private birdVertices: Float32Array = new Float32Array(0);
   private birdGeometryDirty = true;
   private birdModelScaleMeters = 0;
 
-  setRegionRoute(route: MigrationRoute | null, regionalFocus: boolean) {
-    if (this.regionalRoute === route && this.regionalFocus === regionalFocus) return;
-    this.regionalRoute = route;
+  setRegionalFocus(regionalFocus: boolean) {
+    if (this.regionalFocus === regionalFocus) return;
     this.regionalFocus = regionalFocus;
-    this.baseRoutes = regionalFocus ? (route ? [route] : []) : migrationRoutes;
-    this.routes = orientSeasonalRoutes(this.baseRoutes, this.seasonalDirection);
-    this.windRadiusMeters = 0;
-    this.birdGeometryDirty = true;
-    this.map?.triggerRepaint();
+    this.updateRoutes();
   }
 
   setSeasonalDirection(direction: SeasonalMigrationDirection) {
     if (this.seasonalDirection === direction) return;
     this.seasonalDirection = direction;
-    this.routes = orientSeasonalRoutes(this.baseRoutes, direction);
+    this.updateRoutes();
+  }
+
+  private updateRoutes() {
+    this.routes = getSeasonalMigrationRoutes(this.seasonalDirection, this.regionalFocus);
     this.windRadiusMeters = 0;
     this.birdGeometryDirty = true;
     this.map?.triggerRepaint();

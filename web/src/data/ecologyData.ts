@@ -2,11 +2,13 @@ import type { FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson';
 import type { EcologyAtlasManifest, EcologyOverview, EcologySnapshot } from '../../../pipeline/contracts.ts';
 import type { StateBoundaries, StateProperties } from './mapTypes.ts';
 import type { TimelineDay } from './mapFrames.ts';
+import { questingValueWithinScope, validBirdTickContext } from './regionalEvidence.ts';
 
 export type WeatherFrame = EcologyOverview['frames'][number];
 export interface LoadedAtlas { manifest: EcologyAtlasManifest; overview: EcologyOverview; manifestUrl: string }
+export interface StateSnapshotResult { stateCode: string; generation: string; snapshot?: EcologySnapshot; error?: string }
 export interface StateHeatmap {
-  model: 'weather_only' | 'combined' | 'measured_migration' | 'unavailable';
+  model: 'weather_only' | 'unavailable';
   points: FeatureCollection<Point, { model_value: number }>;
 }
 export type EcologyStateFrame = FeatureCollection<Polygon | MultiPolygon, StateProperties & {
@@ -63,6 +65,9 @@ function validateSnapshot(document: EcologyOverview | EcologySnapshot, manifest:
         throw new Error('Ecology weather sample has a duplicate location or mismatched state/date.');
       }
       locationIds.add(point.properties.location_id);
+      if (point.properties.bird_tick_context !== undefined && !validBirdTickContext(point.properties.bird_tick_context)) {
+        throw new Error('Ecology snapshot has invalid connected evidence.');
+      }
     }
   }
 }
@@ -91,6 +96,10 @@ export async function loadStateSnapshot(atlas: LoadedAtlas, stateCode: string, s
   return snapshot;
 }
 
+export function shouldLoadStateSnapshot(result: StateSnapshotResult | null, stateCode: string, generation: string): boolean {
+  return result?.stateCode !== stateCode || result?.generation !== generation || !result.snapshot;
+}
+
 export function snapshotIsStale(snapshot: { stale_after: string }, now = new Date()): boolean {
   const deadline = Date.parse(snapshot.stale_after);
   return !Number.isFinite(deadline) || now.getTime() >= deadline;
@@ -113,14 +122,13 @@ export function buildStateHeatmap(snapshot: EcologySnapshot | null, forecastDate
   if (!snapshot || snapshot.scope.region_code !== `US-${stateCode}`) return empty;
   const frame = snapshot.frames.find((candidate) => candidate.date === forecastDate);
   if (!frame?.weather_suitability.features.length) return empty;
-  const combinedAvailable = frame.weather_suitability.features.every((point) => point.properties.activity_components?.ecological_activity_index != null);
   const points: StateHeatmap['points'] = { type: 'FeatureCollection', features: frame.weather_suitability.features.flatMap((point) => {
-    const value = combinedAvailable ? point.properties.activity_components.ecological_activity_index : point.properties.tick_prediction_index ?? point.properties.questing_suitability;
+    const value = questingValueWithinScope(point.properties);
     if (value === null) return [];
     if (!Number.isFinite(value) || value < 0 || value > 1) throw new RangeError('Heatmap values must be finite model values between zero and one.');
     return [{ type: 'Feature' as const, id: point.id, geometry: point.geometry, properties: { model_value: value } }];
   }) };
-  return { model: points.features.length ? combinedAvailable ? 'combined' : frame.weather_suitability.features.some((point) => point.properties.migration_adjustment_status === 'measured') ? 'measured_migration' : 'weather_only' : 'unavailable', points };
+  return { model: points.features.length ? 'weather_only' : 'unavailable', points };
 }
 
 export function interpolateStateActivity(previous: EcologyStateFrame, next: EcologyStateFrame, progress: number): EcologyStateFrame {
@@ -147,7 +155,7 @@ export function interpolateStateActivity(previous: EcologyStateFrame, next: Ecol
 export function buildEcologyMapData(boundaries: StateBoundaries, frame: WeatherFrame | null): { states: EcologyStateFrame } {
   const stateValues = new Map<string, { total: number; count: number }>();
   for (const point of frame?.weather_suitability.features ?? []) {
-    const value = point.properties.tick_prediction_index ?? point.properties.questing_suitability;
+    const value = questingValueWithinScope(point.properties);
     if (value === null) continue;
     const stateCode = point.properties.state_code;
     const summary = stateValues.get(stateCode) ?? { total: 0, count: 0 };

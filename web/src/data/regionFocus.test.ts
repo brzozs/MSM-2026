@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { buildRegionalPreview, getStateBounds, stateContainsCoordinate } from './regionFocus.ts';
+import { getStateBounds, stateContainsCoordinate } from './regionFocus.ts';
 import type { StateFeature } from './regionFocus.ts';
 import type { StateBoundaries } from './mapTypes';
 
@@ -23,25 +23,6 @@ test('regional containment preserves polygon holes and antimeridian crossings', 
   assert.equal(stateContainsCoordinate(state, [-179.2, 1]), true);
   assert.equal(stateContainsCoordinate(state, [180, 1]), false);
   assert.equal(stateContainsCoordinate(state, [0, 1]), false);
-});
-
-test('state drilldowns use changing synthetic heatmap points inside the actual selected boundary', () => {
-  for (const code of ['NY', 'TX', 'CA', 'AK', 'HI', 'DC']) {
-    const state = states.features.find((feature) => feature.properties.code === code)!;
-    const original = structuredClone(state);
-    const preview = buildRegionalPreview(state, 3);
-    assert.ok(preview.hotspots.features.length > 0, `${code} has regional sample activity.`);
-    assert.deepEqual(state, original);
-    for (const point of preview.hotspots.features) {
-      assert.equal(point.properties.is_example, true);
-      assert.ok(point.properties.intensity >= 0 && point.properties.intensity <= 1);
-      assert.ok(stateContainsCoordinate(state, point.geometry.coordinates, preview.bounds));
-      assert.equal(point.properties.display_height, 20);
-    }
-    assert.notDeepEqual(preview.hotspots, buildRegionalPreview(state, 4).hotspots);
-    assert.ok(preview.migrationRoute);
-    assert.ok(preview.migrationRoute[2][1] > preview.migrationRoute[0][1]);
-  }
 });
 
 test('regional geography includes real county and town/place names for every selectable state', () => {

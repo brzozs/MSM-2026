@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from pipeline.coverage import generate_sampling_locations
+from pipeline.measured_migration import main as attach_measured_migration
 from pipeline.national_snapshot import assign_observations_to_states, publish_national_snapshot
 from pipeline.snapshot import build_snapshot
 from pipeline.tests.test_coverage import BOUNDARIES_PATH, EXPECTED_CODES, state_feature
@@ -111,6 +112,92 @@ class NationalSnapshotTests(unittest.TestCase):
             self.assertEqual(overview["sources"]["birds"]["displayed_record_count"], 1)
             self.assertEqual(overview["sources"]["birds"]["source_query_eligible_record_count"], 2)
             self.assertEqual(overview["sources"]["birds"]["unassigned_observation_count"], 1)
+
+    def test_republishing_overview_preserves_national_query_counts_for_every_region(self):
+        snapshot = self.snapshot()
+        original = snapshot['observations']['birds']['features'][0]
+        for observation_kind, assigned_count, unassigned_count in [('birds', 1131, 22), ('ticks', 3, 2)]:
+            snapshot['observations'][observation_kind]['features'] = [
+                {**original, 'id': f'{observation_kind}-{index}'} for index in range(assigned_count)] + [
+                {**original, 'id': f'{observation_kind}-offshore-{index}',
+                    'geometry': {'type': 'Point', 'coordinates': [-73, 35]}} for index in range(unassigned_count)]
+            snapshot['sources'][observation_kind]['displayed_record_count'] = assigned_count + unassigned_count
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / 'latest.json'
+            for publication_number in range(3):
+                manifest = publish_national_snapshot(snapshot, self.boundaries, manifest_path)
+                overview = json.loads((manifest_path.parent / manifest['overview_url']).read_text())
+                for observation_kind, expected_counts in [('birds', (1131, 1153, 22)), ('ticks', (3, 5, 2))]:
+                    with self.subTest(publication=publication_number, observation_kind=observation_kind):
+                        source = overview['sources'][observation_kind]
+                        self.assertEqual((source['displayed_record_count'], source['source_query_eligible_record_count'],
+                            source['unassigned_observation_count']), expected_counts)
+                        for state in manifest['states']:
+                            regional = json.loads((manifest_path.parent / state['snapshot_url']).read_text())
+                            regional_source = regional['sources'][observation_kind]
+                            self.assertEqual(regional_source['displayed_record_count'],
+                                expected_counts[0] if state['state_code'] == 'NY' else 0)
+                            self.assertEqual(regional_source['source_query_eligible_record_count'], expected_counts[1])
+                            self.assertEqual(regional_source['unassigned_observation_count'], expected_counts[2])
+                            self.assertEqual(regional_source['query_region_code'], 'US')
+                snapshot = overview
+                state_snapshots = [json.loads((manifest_path.parent / state['snapshot_url']).read_text())
+                    for state in manifest['states']]
+                for frame_index, frame in enumerate(snapshot['frames']):
+                    frame['weather_suitability']['features'] = [point for state in state_snapshots
+                        for point in state['frames'][frame_index]['weather_suitability']['features']]
+
+    def test_overview_preserves_connected_ecology_context(self):
+        snapshot = self.snapshot()
+        snapshot['frames'][0]['weather_suitability']['features'][0]['properties']['bird_tick_context'] = {
+            'status': 'unavailable', 'reason': 'Habitat is unavailable'}
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / 'latest.json'
+            manifest = publish_national_snapshot(snapshot, self.boundaries, manifest_path)
+            overview = json.loads((manifest_path.parent / manifest['overview_url']).read_text())
+            properties = overview['frames'][0]['weather_suitability']['features'][0]['properties']
+            self.assertEqual(properties['bird_tick_context'], {'status': 'unavailable', 'reason': 'Habitat is unavailable'})
+
+    def test_malformed_radar_inventory_publishes_unavailable_evidence_and_preserves_weather(self):
+        def attach_connected_context(snapshot, habitat):
+            snapshot['semantics']['integration_fixture'] = [snapshot['sources']['migration']['status'], habitat['status']]
+            return snapshot
+
+        inventories = [
+            b'<ListBucketResult>',
+            b'<ListBucketResult><IsTruncated>false</IsTruncated><CommonPrefixes><Prefix/></CommonPrefixes></ListBucketResult>',
+            b'<ListBucketResult><IsTruncated>true</IsTruncated><CommonPrefixes><Prefix>nexrad/daily/KABR/</Prefix></CommonPrefixes></ListBucketResult>',
+            b'<ListBucketResult><IsTruncated>false</IsTruncated><CommonPrefixes><Prefix>nexrad/daily/KABR/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>nexrad/daily/KABR/</Prefix></CommonPrefixes></ListBucketResult>',
+        ]
+        for inventory in inventories:
+            with self.subTest(inventory=inventory), tempfile.TemporaryDirectory() as directory:
+                snapshot = self.snapshot()
+                original_weather_source = copy.deepcopy(snapshot['sources']['weather'])
+                original_weather_values = [[point['properties']['questing_suitability']
+                    for point in frame['weather_suitability']['features']] for frame in snapshot['frames']]
+                manifest_path = Path(directory) / 'latest.json'
+                publish_national_snapshot(snapshot, self.boundaries, manifest_path)
+                with patch('sys.argv', ['measured_migration', '--source', str(manifest_path)]), \
+                        patch('pipeline.measured_migration.urllib.request.urlopen', side_effect=lambda *args, **kwargs: io.BytesIO(inventory)), \
+                        patch('pipeline.measured_migration.fetch_reference_habitat', return_value={'status': 'unavailable'}), \
+                        patch('pipeline.measured_migration.apply_connected_ecology', side_effect=attach_connected_context), \
+                        redirect_stdout(io.StringIO()):
+                    attach_measured_migration()
+                manifest = json.loads(manifest_path.read_text())
+                overview = json.loads((manifest_path.parent / manifest['overview_url']).read_text())
+                migration = overview['sources']['migration']
+                self.assertEqual(migration['status'], 'unavailable')
+                self.assertEqual(migration['valid_radar_count'], 0)
+                self.assertTrue(migration['errors'])
+                self.assertIn('inventory', migration['reason'].lower())
+                self.assertEqual(overview['semantics']['integration_fixture'], ['unavailable', 'unavailable'])
+                self.assertEqual(overview['sources']['weather'], original_weather_source)
+                self.assertEqual(overview['stale_after'], snapshot['stale_after'])
+                for frame_index, frame in enumerate(overview['frames']):
+                    self.assertEqual([point['properties']['questing_suitability']
+                        for point in frame['weather_suitability']['features']], original_weather_values[frame_index])
+                    self.assertEqual([point['properties']['tick_prediction_index']
+                        for point in frame['weather_suitability']['features']], original_weather_values[frame_index])
 
 
 if __name__ == "__main__":

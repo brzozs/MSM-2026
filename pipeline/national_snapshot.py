@@ -35,9 +35,12 @@ def publish_national_snapshot(snapshot, state_boundaries, output_path, secret_va
         raise ValueError("Every state and D.C. must have weather samples before national publication")
     assignments = {}
     unassigned_counts = {}
+    source_query_counts = {}
     for observation_kind, collection in snapshot["observations"].items():
         assignments[observation_kind], unassigned = assign_observations_to_states(state_boundaries, collection["features"])
-        unassigned_counts[observation_kind] = len(unassigned)
+        source = snapshot["sources"][observation_kind]
+        unassigned_counts[observation_kind] = source.get("unassigned_observation_count", len(unassigned))
+        source_query_counts[observation_kind] = source.get("source_query_eligible_record_count", source["displayed_record_count"])
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     staging_directory = Path(tempfile.mkdtemp(prefix=".ecology-generation-", dir=output_path.parent))
@@ -60,8 +63,10 @@ def publish_national_snapshot(snapshot, state_boundaries, output_path, secret_va
             sources = {**snapshot["sources"]}
             for kind in observations:
                 sources[kind] = {**sources[kind], "displayed_record_count": len(observations[kind]["features"]),
-                    "source_query_eligible_record_count": snapshot["sources"][kind]["displayed_record_count"],
-                    "query_region_code": sources[kind].get("region_code", "US"), "published_region_code": "US-" + state_code,
+                    "source_query_eligible_record_count": source_query_counts[kind],
+                    "unassigned_observation_count": unassigned_counts[kind],
+                    "query_region_code": sources[kind].get("query_region_code", sources[kind].get("region_code", "US")),
+                    "published_region_code": "US-" + state_code,
                     "spatial_subset_note": "Displayed points are a state-boundary subset; source totals/windows retain their original query scope."}
             state_snapshot = {**snapshot, "frames": state_frames, "observations": observations, "sources": sources,
                 "scope": {**snapshot["scope"], "region_code": "US-" + state_code, "state_codes": [state_code],
@@ -79,7 +84,7 @@ def publish_national_snapshot(snapshot, state_boundaries, output_path, secret_va
         overview_sources = {**snapshot["sources"]}
         for kind in assignments:
             overview_sources[kind] = {**overview_sources[kind],
-                "source_query_eligible_record_count": snapshot["sources"][kind]["displayed_record_count"],
+                "source_query_eligible_record_count": source_query_counts[kind],
                 "displayed_record_count": sum(len(features) for features in assignments[kind].values()),
                 "unassigned_observation_count": unassigned_counts[kind]}
         overview = {**snapshot, "kind": "ecology-overview", "sources": overview_sources,
@@ -88,7 +93,7 @@ def publish_national_snapshot(snapshot, state_boundaries, output_path, secret_va
             "frames": [{**frame, "weather_suitability": {"type": "FeatureCollection", "features": [
                 {**feature, "properties": {key: feature["properties"][key] for key in (
                     "location_id", "name", "state_code", "date", "questing_suitability", "questing_index_0_to_100",
-                    "valid_weather_hours", "is_experimental", "is_predicted", "prediction_nearest_distance_km", "prediction_method", "prediction_source_location_ids", "tick_prediction_index", "migration_adjustment_status") if key in feature["properties"]}} for feature in frame["weather_suitability"]["features"]]}} for frame in snapshot["frames"]]}
+                    "valid_weather_hours", "is_experimental", "is_predicted", "prediction_nearest_distance_km", "prediction_method", "prediction_source_location_ids", "tick_prediction_index", "migration_adjustment_status", "bird_tick_context") if key in feature["properties"]}} for feature in frame["weather_suitability"]["features"]]}} for frame in snapshot["frames"]]}
         write_snapshot_atomically(overview, staging_directory / "overview.json", secret_values)
         os.replace(staging_directory, final_directory)
         write_public_json_atomically(manifest, output_path, secret_values)

@@ -8,7 +8,8 @@ import type { EcologySnapshot } from '../../../pipeline/contracts';
 import type { StateBoundaries, VisibleLayers } from '../data/mapTypes';
 import { buildEcologyMapData, buildStateHeatmap, interpolateStateActivity, type EcologyStateFrame, type StateHeatmap, type WeatherFrame } from '../data/ecologyData';
 import { createMapStyle, createStateColorExpression, createStateHeightExpression, createStateLabelHeightExpression, createStateLabelText } from './mapStyle';
-import { buildRegionalPreview, getStateBounds } from '../data/regionFocus';
+import { getStateBounds } from '../data/regionFocus';
+import { questingValueWithinScope } from '../data/regionalEvidence';
 import { MigrationLayer } from './MigrationLayer';
 import { getSeasonalMigrationDirection } from '../data/seasonalMigration';
 import { getElapsedAnimationSeconds, startAnimationLoop } from '../data/animationTiming';
@@ -46,7 +47,6 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
   const [regionalGeography, setRegionalGeography] = useState<{ stateCode: string; boundaries: FeatureCollection } | null>(null);
   const regionalBoundaries = regionalGeography?.stateCode === selectedStateCode ? regionalGeography.boundaries : null;
   const selectedState = useMemo(() => stateBoundaries.features.find((state) => state.properties.code === selectedStateCode), [stateBoundaries, selectedStateCode]);
-  const regionalFlightRoute = useMemo(() => selectedState ? buildRegionalPreview(selectedState, 0).migrationRoute : null, [selectedState]);
   useEffect(() => {
     const abortController = new AbortController();
     fetch(`${import.meta.env.BASE_URL}data/county-labels.geojson`, { signal: abortController.signal })
@@ -165,7 +165,7 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
         const points = frame?.weather_suitability.features ?? [];
         const radius = stateSnapshot?.scope.sampling_spacing_km ? stateSnapshot.scope.sampling_spacing_km * 1500 : 25000;
         const value = county.geometry.type === 'Point' ? interpolateSuitabilityAtCoordinate(county.geometry.coordinates,
-          points.map((point) => ({ coordinate: point.geometry.coordinates, value: point.properties.tick_prediction_index ?? point.properties.questing_suitability })), radius) : null;
+          points.map((point) => ({ coordinate: point.geometry.coordinates, value: questingValueWithinScope(point.properties) })), radius) : null;
         return { ...county, properties: { ...county.properties, kind: 'county', suitability_percent: value === null ? null : Math.round(value * 100) } };
       }) : [];
     (map.getSource('county-label-points') as GeoJSONSource).setData({ type: 'FeatureCollection', features: [
@@ -254,8 +254,8 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
     map.setLayoutProperty('regional-town-borders', 'visibility', selectedState && showCityNames ? 'visible' : 'none');
     map.setLayoutProperty('county-labels', 'visibility', selectedState ? 'visible' : 'none');
     map.setLayoutProperty('county-labels', 'text-field', showCityNames
-      ? ['case', ['==', ['get', 'suitability_percent'], null], '', ['concat', ['to-string', ['get', 'suitability_percent']], '%']]
-      : ['concat', ['get', 'name'], '\n', ['case', ['==', ['get', 'suitability_percent'], null], 'Unavailable', ['concat', ['to-string', ['get', 'suitability_percent']], '% risk']]]);
+      ? ['case', ['==', ['get', 'suitability_percent'], null], '', ['concat', ['to-string', ['get', 'suitability_percent']], ' index']]
+      : ['concat', ['get', 'name'], '\n', ['case', ['==', ['get', 'suitability_percent'], null], 'Unavailable', ['concat', ['to-string', ['get', 'suitability_percent']], ' index']]]);
     map.setLayoutProperty('local-suitability-heatmap', 'visibility', selectedState && visibleLayers.tick_activity ? 'visible' : 'none');
     for (const layerId of ['surrounding-state-outlines', 'surrounding-state-names']) {
       map.setLayoutProperty(layerId, 'visibility', selectedState ? 'visible' : 'none');
@@ -277,9 +277,9 @@ export default function MapCanvas({ stateBoundaries, selectedStateCode, selected
 
   const seasonalDirection = selectedDate ? getSeasonalMigrationDirection(selectedDate) : null;
   useEffect(() => {
-    migrationLayerRef.current?.setRegionRoute(regionalFlightRoute, !!selectedState);
+    migrationLayerRef.current?.setRegionalFocus(!!selectedState);
     migrationLayerRef.current?.setSeasonalDirection(seasonalDirection);
-  }, [mapReady, regionalFlightRoute, selectedState, seasonalDirection]);
+  }, [mapReady, selectedState, seasonalDirection]);
 
   useEffect(() => {
     if (!mapReady || !visibleLayers.bird_activity) return;

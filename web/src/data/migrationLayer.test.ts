@@ -50,7 +50,7 @@ test('migration rendering reuses unchanged geometry and updates buffers when ani
   assert.deepEqual(uploads, [{ method: 'update', length: firstBirdLength }]);
 
   uploads.length = 0;
-  layer.setRegionRoute(null, false);
+  layer.setRegionalFocus(false);
   layer.setSeasonalDirection('northbound');
   layer.render(graphics, renderInput);
   assert.equal(uploads.length, 0, 'Same-season date changes must not rebuild routes or rewind birds.');
@@ -63,12 +63,12 @@ test('migration rendering reuses unchanged geometry and updates buffers when ani
   assert.equal(uploads.length, 2, 'Zoom changes both the wind radius and bird scale.');
   assert.ok(uploads.every((upload) => upload.method === 'update'));
   uploads.length = 0;
-  layer.setRegionRoute([[-75, 40, 5000], [-74, 43, 10000], [-73, 45, 5000]], true);
+  layer.setRegionalFocus(true);
   layer.render(graphics, renderInput);
-  assert.ok(uploads.every((upload) => upload.method === 'allocate'));
-  assert.equal(uploads[1].length, firstBirdLength / 4);
+  assert.ok(uploads.every((upload) => upload.method === 'update'));
+  assert.equal(uploads[1].length, firstBirdLength, 'State focus retains the full set of geographic corridors.');
 
-  layer.setRegionRoute(null, true);
+  layer.setSeasonalDirection(null);
   layer.render(graphics, renderInput);
   assert.deepEqual(uploads.slice(-2), [{ method: 'allocate', length: 0 }, { method: 'allocate', length: 0 }]);
   const drawsBeforeHiding = draws;

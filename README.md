@@ -2,7 +2,7 @@
 
 Sebastian Brzozowski, Marco Svec, Matei Stoica
 
-The active project is an ecological early-warning map connecting bird movement, weather-driven stopover conditions, tick observations, questing suitability, pathogen surveillance, and community exposure.
+The active U.S.-only VectorCast experience has two layers: bird activity/stopover conditions, and tick observations/questing weather/conditional bird-mediated deposition. Its [connected-evidence model](docs/connected-ecology.md) separates observations, forecasts and experimental inference; pathogens, exposure, accounts and alerts are outside this implementation.
 
 The project brief is [prompt.txt](prompt.txt) on the `prompt` branch. The new planning documents are based on commit `bd286e751e8638f76fb473fb812a152b0c5b4513` from November 7, 2026.
 
@@ -25,13 +25,16 @@ Use Node.js 22.12 or newer (Node.js 24 LTS recommended). From the repository roo
 
 ```bash
 npm --prefix web ci
+python3 -u -m pipeline.measured_migration
 python3 -m pipeline.publish
 npm --prefix web run dev
 ```
 
 Prepare a collected national snapshot first using the [pipeline instructions](pipeline/README.md); publication excludes all collection caches and credentials. Open the local URL Vite prints. The existing React/TypeScript/Vite map keeps its original layout, real geography, layer toggles, manually selected forecast dates, zoom/reset controls and compact state details. On mobile, use Map layers to select a state or change overlays.
 
-State heights and colors now use real forecast inputs and experimental weather suitability, with subtle transitions between actual UTC forecast days. Bird routes use sourced broad seasonal guidance; tracks and trails remain explicitly illustrative. State selection loads actual weather heatmaps, simple county/city labels, bird/tick report counts and compact weather details. Source timestamps remain in the published data; the map omits the stale-weather banner. Unavailable inputs stay visible; pathogen/community sources remain unconnected. No disease probability is calculated.
+State heights, colors and local surfaces show an experimental **0–100 questing-weather index**, with explicit unsupported species coverage. Measured radar is separate evidence for conditional stopover/deposition scenarios; it no longer raises current questing. State evidence shows regional bird/tick reports, dates, sources, habitat coverage and model contributions in an opt-in details view. See [model assumptions, biology and limits](docs/connected-ecology.md). Run `npm --prefix web run prepare:data` after collecting an atlas to attach radar and bounded cached land-cover references, calculate components and publish them together.
+
+Birds follow [sourced illustrative migration corridors](docs/migration-routes.md) between named breeding and wintering regions, passing through geographic waypoints with route-based headings. State focus keeps the same corridors; blackpoll warblers use different spring and fall paths. Hover over the migration legend for departure/destination regions. These are approximate examples, separate from all biological model inputs. State selection loads actual weather heatmaps, simple county/city labels, bird/tick report counts and compact weather details. Source timestamps remain in the published data; the map omits the stale-weather banner. Unavailable inputs and original source age stay visible. The existing animations and map layout are preserved.
 
 ```bash
 npm --prefix web test

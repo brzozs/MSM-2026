@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildEcologyMapData, buildStateHeatmap, interpolateStateActivity, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, snapshotIsStale } from './ecologyData.ts';
+import { buildEcologyMapData, buildStateHeatmap, interpolateStateActivity, loadEcologyAtlas, loadStateSnapshot, retainForecastDate, shouldLoadStateSnapshot, snapshotIsStale } from './ecologyData.ts';
 import type { EcologyAtlasManifest, EcologyOverview, EcologySnapshot } from '../../../pipeline/contracts.ts';
 import type { StateBoundaries } from './mapTypes.ts';
 
@@ -87,13 +87,23 @@ test('retains genuine zero suitability and withholds missing samples and state m
   assert.equal(unavailable.states.features[0].properties.questing_suitability, null);
 });
 
-test('the national display consumes the measured-migration index without replacing the source weather value', () => {
+test('national and local questing displays ignore legacy radar boosts', () => {
   const point = { ...weatherPoint(0.5), properties: { ...weatherPoint(0.5).properties, tick_prediction_index: 0.55, migration_adjustment_status: 'measured' as const } };
   const frame = { ...overview.frames[0], weather_suitability: { type: 'FeatureCollection' as const, features: [point] } };
-  assert.equal(buildEcologyMapData(boundaries, frame).states.features[0].properties.questing_suitability, 0.55);
+  assert.equal(buildEcologyMapData(boundaries, frame).states.features[0].properties.questing_suitability, 0.5);
   const snapshot = { ...overview, scope: { region_code: 'US-NY' }, frames: [frame] } as unknown as EcologySnapshot;
-  assert.equal(buildStateHeatmap(snapshot, date, 'NY').model, 'measured_migration');
-  assert.equal(buildStateHeatmap(snapshot, date, 'NY').points.features[0].properties.model_value, 0.55);
+  assert.equal(buildStateHeatmap(snapshot, date, 'NY').model, 'weather_only');
+  assert.equal(buildStateHeatmap(snapshot, date, 'NY').points.features[0].properties.model_value, 0.5);
+  assert.equal(point.properties.questing_suitability, 0.5);
+});
+
+test('unsupported cohort locations retain weather evidence but are withheld from questing maps', () => {
+  const point = { ...weatherPoint(0.5), properties: { ...weatherPoint(0.5).properties,
+    bird_tick_context: { supported_cohort: false } } };
+  const frame = { ...overview.frames[0], weather_suitability: { type: 'FeatureCollection' as const, features: [point] } } as unknown as EcologyOverview['frames'][number];
+  assert.equal(buildEcologyMapData(boundaries, frame).states.features[0].properties.questing_suitability, null);
+  const snapshot = { ...overview, scope: { region_code: 'US-NY' }, frames: [frame] } as unknown as EcologySnapshot;
+  assert.equal(buildStateHeatmap(snapshot, date, 'NY').points.features.length, 0);
   assert.equal(point.properties.questing_suitability, 0.5);
 });
 
@@ -136,12 +146,54 @@ test('local heatmap retains zero weather suitability, excludes missing inputs an
   assert.equal(buildStateHeatmap(snapshot, '2026-11-09', 'NY').points.features.length, 0);
 });
 
-test('local heatmap consumes the existing combined model only when its inputs actually produce values', () => {
+test('combined ecological activity stays separate from the current questing heatmap', () => {
   const snapshot = { ...overview, scope: { region_code: 'US-NY' }, frames: [{ ...overview.frames[0], weather_suitability: {
     type: 'FeatureCollection', features: [{ ...weatherPoint(0.8), properties: { ...weatherPoint(0.8).properties,
       activity_components: { ecological_activity_index: 0.3 } } }],
   } }] } as unknown as EcologySnapshot;
   const heatmap = buildStateHeatmap(snapshot, date, 'NY');
-  assert.equal(heatmap.model, 'combined');
-  assert.equal(heatmap.points.features[0].properties.model_value, 0.3);
+  assert.equal(heatmap.model, 'weather_only');
+  assert.equal(heatmap.points.features[0].properties.model_value, 0.8);
+});
+
+test('successful refresh retries missing or failed state data but reuses a successful matching generation', () => {
+  const snapshot = { ...overview, scope: { region_code: 'US-NY' } } as unknown as EcologySnapshot;
+  assert.equal(shouldLoadStateSnapshot(null, 'NY', generatedAt), true);
+  assert.equal(shouldLoadStateSnapshot({ stateCode: 'NY', generation: generatedAt, error: '503' }, 'NY', generatedAt), true);
+  assert.equal(shouldLoadStateSnapshot({ stateCode: 'NY', generation: generatedAt, snapshot }, 'NY', generatedAt), false);
+  assert.equal(shouldLoadStateSnapshot({ stateCode: 'NY', generation: generatedAt, snapshot }, 'MA', generatedAt), true);
+  assert.equal(shouldLoadStateSnapshot({ stateCode: 'NY', generation: generatedAt, snapshot }, 'NY', '2026-11-09T06:00:00Z'), true);
+});
+
+test('radar support on a missing-weather location does not label the rendered heatmap as migration-adjusted', () => {
+  const snapshot = { ...overview, scope: { region_code: 'US-NY' }, frames: [{ ...overview.frames[0], weather_suitability: {
+    type: 'FeatureCollection', features: [
+      { ...weatherPoint(0.4), properties: { ...weatherPoint(0.4).properties, migration_adjustment_status: 'unavailable' } },
+      { ...weatherPoint(null), id: 'missing', properties: { ...weatherPoint(null).properties,
+        migration_adjustment_status: 'measured', tick_prediction_index: null } },
+    ],
+  } }] } as unknown as EcologySnapshot;
+  const heatmap = buildStateHeatmap(snapshot, date, 'NY');
+  assert.equal(heatmap.model, 'weather_only');
+  assert.equal(heatmap.points.features.length, 1);
+  assert.equal(heatmap.points.features[0].properties.model_value, 0.4);
+});
+
+test('loader rejects invalid connected evidence instead of publishing misleading relative ranges', async () => {
+  const atlas = { manifest, overview, manifestUrl: 'https://example.test/latest.json' };
+  const point = { ...weatherPoint(0.4), properties: { ...weatherPoint(0.4).properties, bird_tick_context: {
+    model_version: 'bird-tick-context-v1', supported_cohort: true, migration_pressure: 0.5,
+    radar_observed_date: date, radar_age_days: 0, stopover_weather_factor: 0, stopover_index: 0,
+    habitat: { status: 'sampled', land_cover_class: 41, habitat_factor: 0.8, year: 2025 },
+    detachment_window_days: [3, 6], detachment_timing_weight: null,
+    deposition_potential: { lower: 0, central: 0.1, upper: 0.2 }, post_drop_moisture_support: null,
+    post_drop_persistence_index: null, contributes_to_current_questing: false,
+    development_status: 'outside_forecast_model', missing_inputs: [],
+  } } };
+  const snapshot = { ...overview, scope: { region_code: 'US-NY' }, frames: [{ ...overview.frames[0],
+    weather_suitability: { type: 'FeatureCollection', features: [point] } }] };
+  const stateUrl = 'https://example.test/generation-example/US-NY.json';
+  await loadStateSnapshot(atlas, 'NY', undefined, fixtureRequest({ [stateUrl]: snapshot }));
+  point.properties.bird_tick_context.deposition_potential.central = 1.5;
+  await assert.rejects(loadStateSnapshot(atlas, 'NY', undefined, fixtureRequest({ [stateUrl]: snapshot })), /connected evidence/i);
 });

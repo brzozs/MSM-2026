@@ -1,4 +1,4 @@
-"""Attach current BirdCast radar-derived migration evidence to the experimental index."""
+"""Attach current BirdCast radar evidence for the separate connected ecology model."""
 
 import argparse
 import calendar
@@ -14,12 +14,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .bird_tick_model import apply_connected_ecology
+from .habitat import fetch_reference_habitat
 from .national_snapshot import publish_national_snapshot
 from .recover_cached_atlas import distance_kilometers
 from .sources import utc_timestamp
 
 ARCHIVE_URL = 'https://birdcastdata.s3.amazonaws.com'
 MAXIMUM_PROFILE_BYTES = 8 * 1024 * 1024
+MAXIMUM_INVENTORY_BYTES = 100000
 
 
 def is_night(timestamp, latitude, longitude):
@@ -41,7 +44,7 @@ def summarize_radar_profile(text, radar, observed_date):
     profiles = {}
     coordinate = None
     for row in csv.DictReader(io.StringIO(text)):
-        if row.get('radar') != radar or row.get('height_reference') != 'sea' or row.get('gap', '').lower() != 'false' or not row.get('dens'):
+        if row.get('radar') != radar or row.get('height_reference') != 'sea' or (row.get('gap') or '').lower() != 'false' or not row.get('dens'):
             continue
         try:
             timestamp = datetime.fromisoformat(row['datetime'].replace('Z', '+00:00'))
@@ -57,12 +60,12 @@ def summarize_radar_profile(text, radar, observed_date):
                 continue
             coordinate = [longitude, latitude]
             layer = float(row['height'])
-            profile = profiles.setdefault(row['datetime'], {})
-            if layer in profile:
-                raise ValueError('Duplicate radar altitude/time bin')
-            profile[layer] = density
-        except (KeyError, TypeError, OverflowError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             continue
+        profile = profiles.setdefault(row['datetime'], {})
+        if layer in profile:
+            raise ValueError('Duplicate radar altitude/time bin')
+        profile[layer] = density
     # VPTS density is birds/km³ in 100 m layers; integrate to birds/km².
     valid_profiles = [sum(profile.values()) * 0.1 for profile in profiles.values() if len(profile) >= 3]
     if coordinate is None or len(valid_profiles) < 12:
@@ -75,10 +78,20 @@ def summarize_radar_profile(text, radar, observed_date):
 def fetch_measured_migration(now, cache_directory):
     observed_date = now.date() - timedelta(days=1)
     with urllib.request.urlopen(f'{ARCHIVE_URL}/?list-type=2&prefix=nexrad/daily/&delimiter=/', timeout=20) as response:
-        document = ElementTree.fromstring(response.read(100000))
-    radars = [element.text.split('/')[-2] for element in document.findall('.//{*}CommonPrefixes/{*}Prefix')]
+        inventory = response.read(MAXIMUM_INVENTORY_BYTES + 1)
+    if len(inventory) > MAXIMUM_INVENTORY_BYTES:
+        raise ValueError('Unexpected BirdCast radar inventory: response exceeds size limit')
+    document = ElementTree.fromstring(inventory)
+    if document.tag.rsplit('}', 1)[-1] != 'ListBucketResult' or document.findtext('{*}IsTruncated') != 'false':
+        raise ValueError('Unexpected BirdCast radar inventory: invalid or truncated listing')
+    prefixes = [element.findtext('{*}Prefix') for element in document.findall('{*}CommonPrefixes')]
+    if any(re.fullmatch(r'nexrad/daily/[A-Z][A-Z0-9]{3}/', prefix or '') is None for prefix in prefixes):
+        raise ValueError('Unexpected BirdCast radar inventory: missing or invalid radar prefix')
+    if len(prefixes) != len(set(prefixes)):
+        raise ValueError('Unexpected BirdCast radar inventory: duplicate radar prefix')
+    radars = [prefix.split('/')[-2] for prefix in prefixes]
     radars = [radar for radar in radars if re.fullmatch(r'K[A-Z0-9]{3}|PA[A-Z0-9]{2}', radar)]
-    if not 1 <= len(radars) <= 170 or document.findtext('{*}IsTruncated') != 'false':
+    if not 1 <= len(radars) <= 170:
         raise ValueError('Unexpected BirdCast radar inventory')
     cache_directory = Path(cache_directory)
     cache_directory.mkdir(parents=True, exist_ok=True)
@@ -96,13 +109,24 @@ def fetch_measured_migration(now, cache_directory):
                 text = content.decode('utf-8')
             except (urllib.error.URLError, OSError, UnicodeError):
                 return None
+        try:
+            summary = summarize_radar_profile(text, radar, observed_date)
+        except (ValueError, csv.Error):
+            cache_path.unlink(missing_ok=True)
+            raise
+        if summary is not None and not cache_path.exists():
             cache_path.write_text(text)
-        return summarize_radar_profile(text, radar, observed_date)
+        return summary
     summaries = []
+    profile_errors = []
     with ThreadPoolExecutor(max_workers=4) as executor:
-        pending = [executor.submit(collect_radar, radar) for radar in radars]
-        for index, future in enumerate(as_completed(pending), 1):
-            summary = future.result()
+        radar_by_future = {executor.submit(collect_radar, radar): radar for radar in radars}
+        for index, future in enumerate(as_completed(radar_by_future), 1):
+            try:
+                summary = future.result()
+            except (ValueError, csv.Error) as error:
+                profile_errors.append(f'Rejected invalid radar profile {radar_by_future[future]} ({type(error).__name__})')
+                summary = None
             if summary is not None:
                 summaries.append(summary)
             if index % 25 == 0:
@@ -110,6 +134,7 @@ def fetch_measured_migration(now, cache_directory):
     return {'provider': 'birdcast', 'status': 'available' if len(summaries) == len(radars) else 'partial' if summaries else 'unavailable',
         'retrieved_at': utc_timestamp(now), 'observed_date': observed_date.isoformat(), 'radars_checked': len(radars),
         'valid_radar_count': len(summaries), 'maximum_support_km': 150,
+        'errors': profile_errors,
         'attribution': 'BirdCast / Cornell Lab of Ornithology, NEXRAD VPTS archive',
         'terms_url': 'https://birdcast.org/data-interpretation/', 'radars': summaries}
 
@@ -123,6 +148,7 @@ def apply_measured_migration(snapshot, migration, now):
     for frame in snapshot['frames']:
         for point in frame['weather_suitability']['features']:
             properties = point['properties']
+            properties.pop('measured_migration', None)
             nearest = min(((distance_kilometers(point['geometry']['coordinates'], radar['coordinate']), radar) for radar in radars), key=lambda item: item[0], default=None)
             properties['tick_prediction_index'] = properties['questing_suitability']
             properties['migration_adjustment_status'] = 'unavailable'
@@ -132,15 +158,13 @@ def apply_measured_migration(snapshot, migration, now):
             density = radar['airborne_birds_per_square_km']
             if not math.isfinite(density) or density < 0:
                 raise ValueError('Measured migration density must be finite and nonnegative')
-            pressure = min(1, math.log1p(density) / math.log(101))
-            weather_value = properties['questing_suitability']
             properties.update(migration_adjustment_status='measured', measured_migration={**radar, 'distance_km': nearest[0]})
-            # Explicit heuristic coefficient; this is not calibrated tick density or disease probability.
-            properties['tick_prediction_index'] = None if weather_value is None else weather_value + 0.2 * pressure * weather_value * (1 - weather_value)
     snapshot['sources']['migration'] = {key: value for key, value in migration.items() if key != 'radars'}
-    if radars:
-        snapshot['unavailable_layers'] = [layer for layer in snapshot['unavailable_layers'] if layer['id'] != 'measured_bird_movement']
-    snapshot['semantics']['migration_model'] = 'Latest measured nocturnal radar density within 150 km; pressure=min(1,log1p(density)/log(101)); index=weather+0.2*pressure*weather*(1-weather). The 0.2 effect is uncalibrated. Latest measured night held across weather forecast dates, not a forecast of future bird movement. No seasonal substitute.'
+    snapshot['unavailable_layers'] = [layer for layer in snapshot['unavailable_layers'] if layer['id'] != 'measured_bird_movement']
+    if not radars:
+        snapshot['unavailable_layers'].append({'id': 'measured_bird_movement',
+            'reason': migration.get('reason', 'No current radar profile passed migration quality checks')})
+    snapshot['semantics']['migration_model'] = 'Latest measured nocturnal radar density within 150 km supports a separate experimental stopover and deposition model; radar is not measured tick carriage and does not adjust source weather-driven questing suitability. Latest measured night held across weather forecast dates, not a forecast of future bird movement. No seasonal substitute.'
     return snapshot
 
 
@@ -157,13 +181,16 @@ def main():
     now = datetime.now(timezone.utc)
     try:
         migration = fetch_measured_migration(now, options.source.parent / 'migration-cache')
-    except (urllib.error.URLError, OSError) as error:
-        print(f'Measured migration collection unavailable: {type(error).__name__}; retaining weather-only indices.', flush=True)
+    except (urllib.error.URLError, OSError, ValueError, ElementTree.ParseError) as error:
+        reason = f'BirdCast radar inventory/collection unavailable: {type(error).__name__}: {error}'
+        print(f'{reason}; retaining weather-only indices.', flush=True)
         migration = {'provider': 'birdcast', 'status': 'unavailable', 'retrieved_at': utc_timestamp(now),
             'observed_date': (now.date() - timedelta(days=1)).isoformat(), 'radars_checked': 0, 'valid_radar_count': 0,
             'maximum_support_km': 150, 'radars': [], 'attribution': 'BirdCast / Cornell Lab of Ornithology',
-            'terms_url': 'https://birdcast.org/data-interpretation/'}
+            'terms_url': 'https://birdcast.org/data-interpretation/', 'reason': reason, 'errors': [reason]}
     apply_measured_migration(snapshot, migration, now)
+    habitat = fetch_reference_habitat(snapshot, options.source.parent / 'habitat-cache', now)
+    apply_connected_ecology(snapshot, habitat)
     boundaries = json.loads(Path('web/public/data/states.geojson').read_text())
     publish_national_snapshot(snapshot, boundaries, options.source)
     print(f"Attached measured migration from {migration['valid_radar_count']}/{migration['radars_checked']} radars; unsupported locations stay weather-only.")

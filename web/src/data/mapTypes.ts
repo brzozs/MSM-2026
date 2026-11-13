@@ -6,5 +6,5 @@ export type VisibleLayers = Record<'bird_activity' | 'tick_activity', boolean>;
 
 export const layerDefinitions: { id: keyof VisibleLayers; label: string; description: string; color: string }[] = [
   { id: 'bird_activity', label: 'Bird migration', description: 'Seasonal flight illustration', color: '#ccdbaf' },
-  { id: 'tick_activity', label: 'Tick activity', description: 'Weather + measured migration', color: '#e8b66e' },
+  { id: 'tick_activity', label: 'Tick activity', description: 'Questing weather index', color: '#e8b66e' },
 ];
