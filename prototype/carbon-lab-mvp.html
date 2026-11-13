@@ -1,0 +1,1340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Standalone MVP render (issue #4). Open directly in a browser; no build step. Illustrative model, not the production Next.js app. -->
+<title>Carbon Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: one technical workbench. Large 3D stage on the left, parts rail on the right; the U.S. tab reuses the same two-column frame. Single graphite look, chosen deliberately per the design spec. */
+:root{
+  color-scheme: dark;
+  --ground:#10151b;
+  --surface:#161d25;
+  --surface-raised:#1c2530;
+  --rule:#2a3542;
+  --ink:#e3e9ef;
+  --ink-muted:#8f9dac;
+  --steel:#9dc2d6;
+  --amber:#e5ae67;
+  --amber-ink:#22180b;
+  --less:#8fd2b3;
+  --more:#f09f86;
+  /* Heatmap diverging scale: blue = less CO2, red = more, neutral graphite at zero (validated vs --surface) */
+  --heat-less:#4a8bd9;
+  --heat-more:#e0675a;
+  --heat-neutral:#343a41;
+  --heat-marker:#e5ae67;
+  --font-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0}
+html,body{background:var(--ground);color:var(--ink)}
+body{
+  font-family:var(--font-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:16px 24px;
+}
+.app{max-width:1280px;margin:0 auto;background:var(--surface);border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+
+/* Top bar */
+.topbar{display:flex;align-items:center;gap:8px 24px;padding:0 24px;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:18px;padding-block:14px}
+.brand-mark{width:18px;height:18px;border-radius:50%;border:2px solid var(--steel);display:grid;place-items:center}
+.brand-mark::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--steel)}
+.tabs{display:flex;gap:4px;align-self:stretch}
+.tab{appearance:none;background:none;border:0;color:var(--ink-muted);font:500 15px var(--font-body);padding:0 12px;border-bottom:2px solid transparent;cursor:pointer;min-height:52px}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--amber)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+.build-tag{margin-left:auto;font-size:12px;color:var(--ink-muted);letter-spacing:.06em;text-transform:uppercase;padding-block:8px}
+
+/* Panels */
+.panel{padding:24px}
+.panel-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px 16px;flex-wrap:wrap;margin-bottom:20px}
+h1{font:600 clamp(26px,3.2vw,34px)/1.05 var(--font-display);margin:0;letter-spacing:.005em;text-wrap:balance}
+h2{font:600 20px/1.1 var(--font-display);margin:0;letter-spacing:.01em}
+.lede{margin:6px 0 0;color:var(--ink-muted);max-width:60ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,360px);gap:28px}
+.grid > *{min-width:0}
+@media (max-width:920px){.grid{grid-template-columns:minmax(0,1fr)}}
+
+.btn{appearance:none;font:500 14px var(--font-body);color:var(--ink);background:var(--surface-raised);border:1px solid var(--rule);border-radius:6px;padding:9px 14px;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{border-color:var(--ink-muted)}
+.btn-amber{background:var(--amber);border-color:var(--amber);color:var(--amber-ink);font-weight:600}
+.btn-amber:hover{filter:brightness(1.06);border-color:var(--amber)}
+.label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted)}
+
+/* Stage */
+.stage{position:relative;height:clamp(300px,44vw,520px);border-radius:10px;overflow:hidden;background:var(--surface-raised);border:1px solid var(--rule)}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas:active{cursor:grabbing}
+.overlay{position:absolute;display:flex;gap:8px;align-items:center;pointer-events:none}
+.overlay > *{pointer-events:auto}
+.overlay-top-left{top:12px;left:12px}
+.overlay-top-right{top:12px;right:12px}
+.overlay-bottom{left:14px;right:14px;bottom:10px;justify-content:space-between;font-size:12px;color:var(--ink-muted);pointer-events:none;flex-wrap:wrap}
+.segmented{display:flex;background:color-mix(in srgb,var(--ground) 80%,transparent);border:1px solid var(--rule);border-radius:7px;padding:3px}
+.segmented button{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 13px var(--font-body);padding:6px 11px;border-radius:5px;cursor:pointer;min-height:32px}
+.segmented button[aria-pressed="true"]{background:var(--rule);color:var(--ink)}
+.icon-btn{appearance:none;width:36px;height:36px;display:grid;place-items:center;border-radius:7px;border:1px solid var(--rule);background:color-mix(in srgb,var(--ground) 80%,transparent);color:var(--ink);cursor:pointer}
+.icon-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.webgl-missing{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--ink-muted)}
+
+/* Instruments */
+.instruments{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:18px;border-bottom:1px solid var(--rule);padding-bottom:16px}
+.instrument{padding:0 16px;border-left:1px solid var(--rule);min-width:0}
+.instrument:first-child{padding-left:0;border-left:0}
+.readout{font:600 clamp(30px,4vw,42px)/1 var(--font-display);font-variant-numeric:tabular-nums;margin-top:6px;white-space:nowrap}
+.readout small{font:500 14px var(--font-body);color:var(--ink-muted);margin-left:4px}
+.sub{font-size:13px;color:var(--ink-muted);margin-top:6px;font-variant-numeric:tabular-nums}
+@media (max-width:520px){.instrument{padding:0 10px}.sub{font-size:12px}}
+
+.drive-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}
+.pedal{min-height:48px;padding:0 22px;font-size:15px;user-select:none;-webkit-user-select:none;touch-action:none}
+.pedal[data-held="true"]{transform:translateY(1px);box-shadow:inset 0 0 0 2px var(--ink)}
+.keys{font-size:12px;color:var(--ink-muted);margin-left:auto}
+kbd{font:500 11px var(--font-body);border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink)}
+
+/* Parts rail */
+.rail{display:flex;flex-direction:column;gap:18px}
+.rail-head{display:flex;justify-content:space-between;align-items:baseline}
+.parts{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+.part{border-bottom:1px solid var(--rule)}
+.part label{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:4px 12px;padding:12px 0;cursor:pointer;align-items:start}
+.part input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--steel);cursor:pointer}
+.part-name{font-weight:500}
+.part-category{font-size:12px;color:var(--ink-muted)}
+.part-mechanism{grid-column:2 / 4;font-size:13px;color:var(--ink-muted);margin-top:2px}
+.part-effect{font-size:13px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.part-effect span{display:block;font-size:11px;color:var(--ink-muted)}
+.less{color:var(--less)}
+.more{color:var(--more)}
+
+.comparison{display:flex;flex-direction:column;gap:10px}
+.trace{width:100%;height:auto;display:block}
+.trace text{fill:var(--ink-muted);font:10px var(--font-body)}
+.trace .axis{stroke:var(--rule);stroke-width:1}
+.trace .line{stroke:var(--steel);stroke-width:1.6;fill:none}
+.trace .area{fill:color-mix(in srgb,var(--steel) 14%,transparent)}
+.bar-row{display:grid;grid-template-columns:72px minmax(0,1fr) 72px;gap:10px;align-items:center;font-size:13px}
+.bar-row .value{text-align:right;font-variant-numeric:tabular-nums}
+.track{height:8px;background:var(--surface-raised);border-radius:4px;overflow:hidden}
+.fill{height:100%;border-radius:4px;background:var(--ink-muted);transition:width .3s ease}
+.fill-build{background:var(--steel)}
+.verdict{font-size:14px;font-weight:500}
+.apply{justify-content:center;min-height:48px;font-size:15px}
+
+/* U.S. impact */
+.big{font:600 clamp(48px,7vw,76px)/.95 var(--font-display);font-variant-numeric:tabular-nums}
+.big small{font:500 16px var(--font-body);color:var(--ink-muted);margin-left:8px}
+.change{font-size:17px;margin-top:8px}
+.national-bars{display:flex;flex-direction:column;gap:16px;margin-top:28px;padding-bottom:24px;border-bottom:1px solid var(--rule)}
+.nbar-head{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-muted);margin-bottom:6px;font-variant-numeric:tabular-nums}
+.nbar-head strong{color:var(--ink);font-weight:500}
+.nbar{height:28px;background:var(--surface-raised);border-radius:4px;overflow:hidden}
+.nbar .fill{border-radius:0}
+.counter-row{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-top:20px}
+.counter{font:600 34px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.counter small{font:500 13px var(--font-body);color:var(--ink-muted);margin-left:6px}
+.rates{font-size:13px;color:var(--ink-muted);margin-top:8px;font-variant-numeric:tabular-nums}
+.rates strong{color:var(--ink);font-weight:500}
+.slider-block{padding-block:4px 18px;border-bottom:1px solid var(--rule)}
+.slider-head{display:flex;justify-content:space-between;margin-bottom:10px}
+input[type="range"]{width:100%;accent-color:var(--steel)}
+.slider-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-muted)}
+.applied{list-style:none;margin:0;padding:0 0 16px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:6px;font-size:14px}
+.applied li::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--steel);margin-right:10px;vertical-align:middle}
+.applied .empty::before{background:var(--ink-muted)}
+.notes{font-size:13px;color:var(--ink-muted);display:flex;flex-direction:column;gap:8px}
+.notes strong{color:var(--ink);font-weight:500}
+.notes a{color:var(--steel)}
+.status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--amber)}
+
+/* Heatmap */
+.heat-block{position:relative;margin-top:32px;padding-top:24px;border-top:1px solid var(--rule)}
+.heat-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap;margin-bottom:14px}
+.heat-scroll{overflow-x:auto}
+.heat-grid{position:relative;display:grid;grid-template-columns:minmax(96px,170px) repeat(11,minmax(18px,1fr));gap:2px;min-width:340px}
+.heat-col-label{font-size:11px;color:var(--ink-muted);text-align:center;padding-bottom:4px;font-variant-numeric:tabular-nums}
+.heat-row-label{font-size:13px;color:var(--ink-muted);display:flex;align-items:center;padding-right:10px;line-height:1.2}
+.heat-row-label.is-headline{color:var(--ink);font-weight:600}
+.heat-row-label.is-live{color:var(--ink)}
+.heat-row-label .live-dot{width:7px;height:7px;border-radius:50%;background:var(--heat-marker);margin-right:7px;flex:none}
+.heat-cell{height:32px;border-radius:3px;background:var(--heat-neutral);transition:background-color .45s ease, box-shadow .15s ease;cursor:default;outline:none}
+.heat-cell:hover,.heat-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--ink)}
+.heat-cell.is-empty{background:repeating-linear-gradient(45deg,var(--surface-raised) 0 4px,var(--surface) 4px 8px)}
+.heat-row-gap{grid-column:1 / -1;height:6px}
+.heat-marker{position:absolute;width:2px;margin-left:-1px;background:var(--heat-marker);border-radius:1px;pointer-events:none;transition:left .12s linear}
+.heat-legend{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:12px;color:var(--ink-muted);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.legend-bar{flex:1 1 160px;max-width:320px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--heat-less),var(--heat-neutral),var(--heat-more))}
+.heat-tooltip{position:absolute;z-index:5;pointer-events:none;background:var(--ground);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;font-size:13px;line-height:1.35;box-shadow:0 6px 18px rgb(0 0 0 / .35);max-width:260px}
+.heat-tooltip strong{display:block;font-weight:600;color:var(--ink)}
+.heat-tooltip span{color:var(--ink-muted)}
+@media (prefers-reduced-motion:reduce){.heat-cell,.heat-marker{transition:none}}
+
+.footer{display:flex;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;padding:12px 24px;border-top:1px solid var(--rule);font-size:12px;color:var(--ink-muted)}
+
+@media (max-width:600px){
+  .panel{padding:18px}
+  .topbar{padding:0 18px}
+  .build-tag{display:none}
+  .keys{display:none}
+}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Carbon Lab</div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-lab" aria-controls="panel-lab" aria-selected="true">Car lab</button>
+      <button class="tab" role="tab" id="tab-us" aria-controls="panel-us" aria-selected="false">U.S. impact</button>
+    </nav>
+    <span class="build-tag">MVP render · illustrative model</span>
+  </header>
+
+  <!-- CAR LAB -->
+  <section class="panel" id="panel-lab" role="tabpanel" aria-labelledby="tab-lab">
+    <div class="panel-head">
+      <div>
+        <h1>Your car, reconfigured.</h1>
+        <p class="lede">Fit parts, drive, and see how tailpipe CO₂ changes on the same trip.</p>
+      </div>
+      <button class="btn" id="resetToStock" type="button">Reset to stock</button>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="stage" id="stage">
+          <div class="overlay overlay-top-left">
+            <div class="segmented" role="group" aria-label="View">
+              <button type="button" data-view="body" aria-pressed="true">Body</button>
+              <button type="button" data-view="cutaway" aria-pressed="false">Cutaway</button>
+              <button type="button" data-view="engine" aria-pressed="false">Engine</button>
+            </div>
+          </div>
+          <div class="overlay overlay-top-right">
+            <button class="icon-btn" type="button" id="resetCamera" aria-label="Reset camera" title="Reset camera">
+              <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg>
+            </button>
+            <button class="icon-btn" type="button" id="pauseToggle" aria-label="Pause simulation" title="Pause">
+              <svg viewBox="0 0 24 24" id="pauseIcon"><path d="M9 5v14M15 5v14"/></svg>
+            </button>
+          </div>
+          <div class="overlay overlay-bottom">
+            <span>Drag to orbit · scroll or pinch to zoom</span>
+            <span id="engineLabel">2.0 L inline-four · firing order 1-3-4-2 · engine shown 30× slower</span>
+          </div>
+        </div>
+
+        <div class="instruments" aria-label="Instruments">
+          <div class="instrument">
+            <div class="label">Speed</div>
+            <div class="readout"><span id="speedReadout">0</span><small>mph</small></div>
+            <div class="sub" id="driveState">Idling</div>
+          </div>
+          <div class="instrument">
+            <div class="label">Engine</div>
+            <div class="readout"><span id="rpmReadout">800</span><small>rpm</small></div>
+            <div class="sub" id="gearReadout">Gear 1</div>
+          </div>
+          <div class="instrument">
+            <div class="label">Tailpipe CO₂</div>
+            <div class="readout"><span id="co2Readout">0.52</span><small>g/s</small></div>
+            <div class="sub" id="co2Stock">Stock at this moment 0.52 g/s</div>
+          </div>
+        </div>
+
+        <div class="drive-row">
+          <button class="btn pedal" type="button" id="brakePedal">Brake</button>
+          <button class="btn btn-amber pedal" type="button" id="acceleratorPedal">Accelerate</button>
+          <button class="btn" type="button" id="resetDrive">Stop &amp; reset trip</button>
+          <span class="keys">Hold <kbd>↑</kbd>/<kbd>W</kbd> to accelerate, <kbd>↓</kbd>/<kbd>S</kbd> to brake</span>
+        </div>
+        <p class="sub" id="tripTotals">This trip: your build 0.0 g · stock 0.0 g, both computed on the same speed trace.</p>
+      </div>
+
+      <aside class="rail">
+        <div class="rail-head">
+          <h2>Parts</h2>
+          <span class="sub" id="fittedCount">0 fitted / 4 options</span>
+        </div>
+        <ul class="parts" id="partsList"></ul>
+
+        <div class="comparison">
+          <div class="rail-head">
+            <h2>Same drive, different build</h2>
+          </div>
+          <svg class="trace" viewBox="0 0 260 74" role="img" aria-label="Reference drive speed trace: idle, accelerate to 30 mph, stop, accelerate to 60 mph, cruise, stop, over 120 seconds">
+            <line class="axis" x1="34" y1="58" x2="252" y2="58"/>
+            <line class="axis" x1="34" y1="10" x2="252" y2="10" stroke-dasharray="2 3"/>
+            <path class="area" id="traceArea"/>
+            <path class="line" id="traceLine"/>
+            <text x="0" y="13">60 mph</text>
+            <text x="34" y="71">0 s</text>
+            <text x="252" y="71" text-anchor="end">120 s</text>
+          </svg>
+          <div class="bar-row"><span>Stock</span><div class="track"><div class="fill" id="refBarStock"></div></div><span class="value" id="refStock">–</span></div>
+          <div class="bar-row"><span>Your build</span><div class="track"><div class="fill fill-build" id="refBarBuild"></div></div><span class="value" id="refBuild">–</span></div>
+          <div class="verdict" id="refVerdict">Same as stock</div>
+          <div class="sub">Reference drive <code>mixed-reference-v1</code>: 120 s of idling, city, and highway, stepped every 0.05 s.</div>
+        </div>
+
+        <button class="btn btn-amber apply" type="button" id="applyAcrossUs">Apply build across the U.S. ↗</button>
+      </aside>
+    </div>
+  </section>
+
+  <!-- U.S. IMPACT -->
+  <section class="panel" id="panel-us" role="tabpanel" aria-labelledby="tab-us" hidden>
+    <div class="panel-head">
+      <div>
+        <h1>One build. A national difference.</h1>
+        <p class="lede">A what-if for U.S. gasoline cars and light trucks if they matched your build's result on the reference drive.</p>
+      </div>
+      <button class="btn" type="button" id="editBuild">Edit your build</button>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="label">Projected annual tailpipe CO₂</div>
+        <div class="big"><span id="usProjected">976.0</span><small>million metric tons</small></div>
+        <div class="change" id="usChange">No change from the 2023 baseline</div>
+
+        <div class="national-bars">
+          <div>
+            <div class="nbar-head"><span>2023 baseline</span><strong id="usBaselineValue">976.0 million t</strong></div>
+            <div class="nbar"><div class="fill" id="usBarBaseline"></div></div>
+          </div>
+          <div>
+            <div class="nbar-head"><span>With your build</span><strong id="usScenarioValue">976.0 million t</strong></div>
+            <div class="nbar"><div class="fill fill-build" id="usBarScenario"></div></div>
+          </div>
+        </div>
+
+        <div class="counter-row">
+          <div>
+            <div class="label" id="counterLabel">Estimated CO₂ avoided since this scenario began</div>
+            <div class="rates">Baseline <strong id="rateBaseline">30.95 t/s</strong> · Your scenario <strong id="rateScenario">30.95 t/s</strong></div>
+          </div>
+          <div class="counter"><span id="counterValue">0.0</span><small>metric tons</small></div>
+        </div>
+      </div>
+
+      <aside class="rail">
+        <div class="slider-block">
+          <div class="slider-head"><label for="adoptionPercent">Fleet adoption</label><strong id="adoptionOutput">100%</strong></div>
+          <input type="range" id="adoptionPercent" min="0" max="100" step="1" value="100">
+          <div class="slider-ends"><span>No vehicles</span><span>All eligible vehicles</span></div>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:8px">Parts applied</div>
+          <ul class="applied" id="appliedParts"></ul>
+        </div>
+        <div class="notes">
+          <strong>Where the numbers come from</strong>
+          <span>Baseline: 2023 gasoline passenger cars (293.6) + light-duty trucks (682.4) = 976.0 million metric tons CO₂, <a href="https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=P101EZHC.txt" target="_blank" rel="noopener">EPA GHG Inventory 1990–2023, Table 3-13</a>.</span>
+          <span>Projection: baseline × ((1 − adoption) + adoption × build ratio). Every participating vehicle is assumed to match the demo car's proportional result, with unchanged mileage.</span>
+          <span>Excludes diesel, EVs, motorcycles, freight, and upstream emissions. Rates use 2023's 31,536,000 seconds. The counter is an estimate, not a live measurement.</span>
+          <span class="status">Databricks not connected. This MVP computes the projection in your browser.</span>
+        </div>
+      </aside>
+    </div>
+
+    <div class="heat-block" id="heatBlock">
+      <div class="heat-head">
+        <h2>Where your build matters</h2>
+        <span class="sub">Annual change in U.S. tailpipe CO₂, million metric tons · rows: driving condition · columns: fleet adoption</span>
+      </div>
+      <div class="heat-scroll">
+        <div class="heat-grid" id="heatGrid" role="grid" aria-label="Annual national CO2 change by driving condition and fleet adoption"></div>
+      </div>
+      <div class="heat-legend" aria-hidden="true">
+        <span id="legendLess">−0.0 less</span>
+        <div class="legend-bar"></div>
+        <span id="legendMore">+0.0 more</span>
+        <span>· 0 = no change</span>
+      </div>
+      <p class="sub">Each row asks what happens if all eligible driving looked like that condition. The amber line is your adoption setting. The bottom row follows your Car lab trip as you drive.</p>
+      <div class="heat-tooltip" id="heatTooltip" hidden></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>MVP render · coefficients and part effects are illustrative planning defaults, not measurements. Tailpipe CO₂ only.</span>
+    <span>Model illustrative-v1</span>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  /* ---------------- Calculation core (spec: illustrative-v1) ---------------- */
+  const METERS_PER_SECOND_PER_MPH = 0.44704;
+  const CO2_GRAMS_PER_LITER = 8887 / 3.785411784;
+  const TIME_STEP_SECONDS = 0.05;
+  const SPEED_CAP_METERS_PER_SECOND = 90 * METERS_PER_SECOND_PER_MPH;
+  const ACCELERATOR_REQUEST_METERS_PER_SECOND_SQUARED = 1.5;
+  const BRAKE_REQUEST_METERS_PER_SECOND_SQUARED = -3;
+  const ENGINE_ANIMATION_SLOWDOWN_FACTOR = 30;
+
+  const STOCK_PARAMETERS = Object.freeze({
+    massKilograms: 1500,
+    dragCoefficient: 0.30,
+    frontalAreaSquareMeters: 2.2,
+    rollingResistanceCoefficient: 0.010,
+    airDensityKilogramsPerCubicMeter: 1.225,
+    gravityMetersPerSecondSquared: 9.81,
+    thermalEfficiency: 0.25,
+    drivetrainEfficiency: 0.90,
+    mechanicalEngineLossWatts: 1500,
+    accessoryLoadWatts: 500,
+    gasolineEnergyJoulesPerLiter: 34000000,
+    warmIdleFuelLitersPerSecond: 0.8 / 3600,
+  });
+
+  const MODIFICATION_CATALOG = [
+    { id: 'wheel-covers', name: 'Aero wheel covers', category: 'Body & aero', parameterNote: 'Cd −0.009 · +2 kg',
+      mechanism: 'Flat covers stop the spokes stirring the air. Aero gains grow with speed.',
+      applyToParameters: (p) => { p.dragCoefficient -= 0.009; p.massKilograms += 2; } },
+    { id: 'undertray', name: 'Smooth underbody', category: 'Body & aero', parameterNote: 'Cd −0.014 · +4 kg',
+      mechanism: 'A flat panel lets air pass under the car without snagging on parts.',
+      applyToParameters: (p) => { p.dragCoefficient -= 0.014; p.massKilograms += 4; } },
+    { id: 'cargo-box', name: 'Roof cargo box', category: 'Body & aero', parameterNote: 'Cd +0.075 · +25 kg incl. rack',
+      mechanism: 'A box in the airstream adds a lot of drag, mostly felt on the highway.',
+      applyToParameters: (p) => { p.dragCoefficient += 0.075; p.massKilograms += 25; } },
+    { id: 'extra-cargo', name: 'Extra cargo', category: 'Wheels & mass', parameterNote: '+100 kg',
+      mechanism: 'More mass to push every time the car speeds up. Visible in cutaway.',
+      applyToParameters: (p) => { p.massKilograms += 100; } },
+  ];
+
+  function resolveVehicleParameters(selectedModificationIds) {
+    const fittedParameters = { ...STOCK_PARAMETERS };
+    for (const modification of MODIFICATION_CATALOG) {
+      if (selectedModificationIds.has(modification.id)) modification.applyToParameters(fittedParameters);
+    }
+    return fittedParameters;
+  }
+
+  function resistanceForcesNewtons(parameters, speedMetersPerSecond) {
+    const dragForceNewtons = 0.5 * parameters.airDensityKilogramsPerCubicMeter * parameters.dragCoefficient *
+      parameters.frontalAreaSquareMeters * speedMetersPerSecond * speedMetersPerSecond;
+    const rollingForceNewtons = speedMetersPerSecond > 0
+      ? parameters.rollingResistanceCoefficient * parameters.massKilograms * parameters.gravityMetersPerSecondSquared
+      : 0;
+    return { dragForceNewtons, rollingForceNewtons };
+  }
+
+  function co2GramsPerSecond(parameters, speedMetersPerSecond, accelerationMetersPerSecondSquared) {
+    if (speedMetersPerSecond <= 0.01) return parameters.warmIdleFuelLitersPerSecond * CO2_GRAMS_PER_LITER;
+    const { dragForceNewtons, rollingForceNewtons } = resistanceForcesNewtons(parameters, speedMetersPerSecond);
+    const wheelPowerWatts = Math.max(0,
+      (parameters.massKilograms * accelerationMetersPerSecondSquared + dragForceNewtons + rollingForceNewtons) * speedMetersPerSecond);
+    const fuelLitersPerSecond = Math.max(parameters.warmIdleFuelLitersPerSecond,
+      (wheelPowerWatts / parameters.drivetrainEfficiency + parameters.mechanicalEngineLossWatts + parameters.accessoryLoadWatts) /
+      (parameters.thermalEfficiency * parameters.gasolineEnergyJoulesPerLiter));
+    return fuelLitersPerSecond * CO2_GRAMS_PER_LITER;
+  }
+
+  const REFERENCE_DRIVE_KNOTS_SECONDS_MPH = [[0, 0], [10, 0], [25, 30], [40, 30], [50, 0], [60, 0], [80, 60], [110, 60], [120, 0]];
+  const REFERENCE_DRIVE_DURATION_SECONDS = 120;
+
+  function referenceDriveSample(elapsedSeconds) {
+    for (let index = 0; index < REFERENCE_DRIVE_KNOTS_SECONDS_MPH.length - 1; index++) {
+      const [startSeconds, startMph] = REFERENCE_DRIVE_KNOTS_SECONDS_MPH[index];
+      const [endSeconds, endMph] = REFERENCE_DRIVE_KNOTS_SECONDS_MPH[index + 1];
+      if (elapsedSeconds >= startSeconds && elapsedSeconds < endSeconds) {
+        const slopeMphPerSecond = (endMph - startMph) / (endSeconds - startSeconds);
+        return {
+          speedMetersPerSecond: (startMph + slopeMphPerSecond * (elapsedSeconds - startSeconds)) * METERS_PER_SECOND_PER_MPH,
+          accelerationMetersPerSecondSquared: slopeMphPerSecond * METERS_PER_SECOND_PER_MPH,
+        };
+      }
+    }
+    return { speedMetersPerSecond: 0, accelerationMetersPerSecondSquared: 0 };
+  }
+
+  function referenceDriveCo2Grams(parameters) {
+    const stepCount = Math.round(REFERENCE_DRIVE_DURATION_SECONDS / TIME_STEP_SECONDS);
+    let totalCo2Grams = 0;
+    for (let stepIndex = 0; stepIndex < stepCount; stepIndex++) {
+      const sample = referenceDriveSample(stepIndex * TIME_STEP_SECONDS);
+      totalCo2Grams += co2GramsPerSecond(parameters, sample.speedMetersPerSecond, sample.accelerationMetersPerSecondSquared) * TIME_STEP_SECONDS;
+    }
+    return totalCo2Grams;
+  }
+
+  const STOCK_REFERENCE_CO2_GRAMS = referenceDriveCo2Grams(STOCK_PARAMETERS);
+
+  function compareReferenceDrive(selectedModificationIds) {
+    const modifiedCo2Grams = referenceDriveCo2Grams(resolveVehicleParameters(selectedModificationIds));
+    return { stockCo2Grams: STOCK_REFERENCE_CO2_GRAMS, modifiedCo2Grams, emissionsRatio: modifiedCo2Grams / STOCK_REFERENCE_CO2_GRAMS };
+  }
+
+  const GEAR_RATIOS = [3.6, 2.1, 1.4, 1.0, 0.8];
+  const FINAL_DRIVE_RATIO = 3.7;
+  const WHEEL_RADIUS_METERS = 0.31;
+  const UPSHIFT_THRESHOLDS_MPH = [10, 20, 35, 50];
+
+  function gearIndexForSpeed(speedMph) {
+    let gearIndex = 0;
+    while (gearIndex < UPSHIFT_THRESHOLDS_MPH.length && speedMph >= UPSHIFT_THRESHOLDS_MPH[gearIndex]) gearIndex++;
+    return gearIndex;
+  }
+
+  function engineRpmForSpeed(speedMetersPerSecond) {
+    const gearIndex = gearIndexForSpeed(speedMetersPerSecond / METERS_PER_SECOND_PER_MPH);
+    const rpm = speedMetersPerSecond / WHEEL_RADIUS_METERS * GEAR_RATIOS[gearIndex] * FINAL_DRIVE_RATIO * 60 / (2 * Math.PI);
+    return Math.min(6500, Math.max(800, rpm));
+  }
+
+  /* ---------------- National scenario (Databricks stand-in) ---------------- */
+  const BASELINE_ANNUAL_MILLION_METRIC_TONS = 976.0;
+  const SECONDS_IN_BASELINE_YEAR = 31536000;
+
+  /* ---------------- App state ---------------- */
+  const selectedModificationIds = new Set();
+  let fittedParameters = resolveVehicleParameters(selectedModificationIds);
+  let referenceComparison = compareReferenceDrive(selectedModificationIds);
+  let adoptionFraction = 1;
+  let scenarioStartedAtMilliseconds = performance.now();
+  let viewMode = 'body';
+  let simulationIsPaused = false;
+  const pedals = { acceleratorHeld: false, brakeHeld: false };
+  const simulation = {
+    speedMetersPerSecond: 0,
+    appliedAccelerationMetersPerSecondSquared: 0,
+    modifiedCo2GramsPerSecond: STOCK_PARAMETERS.warmIdleFuelLitersPerSecond * CO2_GRAMS_PER_LITER,
+    stockCo2GramsPerSecond: STOCK_PARAMETERS.warmIdleFuelLitersPerSecond * CO2_GRAMS_PER_LITER,
+    modifiedTripCo2Grams: 0,
+    stockTripCo2Grams: 0,
+    crankAngleRadians: 0,
+  };
+
+  function stepFreeDrive() {
+    const currentSpeed = simulation.speedMetersPerSecond;
+    let requestedAcceleration;
+    if (pedals.brakeHeld) requestedAcceleration = BRAKE_REQUEST_METERS_PER_SECOND_SQUARED;
+    else if (pedals.acceleratorHeld) requestedAcceleration = ACCELERATOR_REQUEST_METERS_PER_SECOND_SQUARED;
+    else if (currentSpeed > 0) {
+      const { dragForceNewtons, rollingForceNewtons } = resistanceForcesNewtons(fittedParameters, currentSpeed);
+      requestedAcceleration = -(dragForceNewtons + rollingForceNewtons) / fittedParameters.massKilograms;
+    } else requestedAcceleration = 0;
+
+    const nextSpeed = Math.min(SPEED_CAP_METERS_PER_SECOND, Math.max(0, currentSpeed + requestedAcceleration * TIME_STEP_SECONDS));
+    const achievedAcceleration = (nextSpeed - currentSpeed) / TIME_STEP_SECONDS;
+    const sampleSpeed = (currentSpeed + nextSpeed) / 2;
+
+    simulation.modifiedCo2GramsPerSecond = co2GramsPerSecond(fittedParameters, sampleSpeed, achievedAcceleration);
+    simulation.stockCo2GramsPerSecond = co2GramsPerSecond(STOCK_PARAMETERS, sampleSpeed, achievedAcceleration);
+    simulation.modifiedTripCo2Grams += simulation.modifiedCo2GramsPerSecond * TIME_STEP_SECONDS;
+    simulation.stockTripCo2Grams += simulation.stockCo2GramsPerSecond * TIME_STEP_SECONDS;
+    simulation.appliedAccelerationMetersPerSecondSquared = achievedAcceleration;
+    simulation.speedMetersPerSecond = nextSpeed;
+  }
+
+  /* ---------------- DOM helpers ---------------- */
+  const byId = (id) => document.getElementById(id);
+  const formatGrams = (grams) => grams.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' g';
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------------- Reference trace SVG ---------------- */
+  (function drawReferenceTrace() {
+    const toX = (seconds) => 34 + seconds / REFERENCE_DRIVE_DURATION_SECONDS * 218;
+    const toY = (mph) => 58 - mph / 60 * 48;
+    const points = REFERENCE_DRIVE_KNOTS_SECONDS_MPH.map(([seconds, mph]) => `${toX(seconds).toFixed(1)},${toY(mph).toFixed(1)}`);
+    byId('traceLine').setAttribute('d', 'M' + points.join(' L'));
+    byId('traceArea').setAttribute('d', 'M' + points.join(' L') + ` L${toX(120)},58 L${toX(0)},58 Z`);
+  })();
+
+  /* ---------------- Parts list ---------------- */
+  const partsList = byId('partsList');
+  for (const modification of MODIFICATION_CATALOG) {
+    const aloneDeltaGrams = compareReferenceDrive(new Set([modification.id])).modifiedCo2Grams - STOCK_REFERENCE_CO2_GRAMS;
+    const effectClass = aloneDeltaGrams < 0 ? 'less' : 'more';
+    const sign = aloneDeltaGrams < 0 ? '−' : '+';
+    const item = document.createElement('li');
+    item.className = 'part';
+    item.innerHTML = `
+      <label for="part-${modification.id}">
+        <input type="checkbox" id="part-${modification.id}" value="${modification.id}">
+        <span><span class="part-name">${modification.name}</span><br><span class="part-category">${modification.category} · ${modification.parameterNote}</span></span>
+        <span class="part-effect ${effectClass}">${sign}${Math.abs(aloneDeltaGrams).toFixed(1)} g<span>alone, ref. drive</span></span>
+        <span class="part-mechanism">${modification.mechanism}</span>
+      </label>`;
+    partsList.appendChild(item);
+  }
+  partsList.addEventListener('change', (event) => {
+    const checkbox = event.target;
+    if (checkbox.checked) selectedModificationIds.add(checkbox.value);
+    else selectedModificationIds.delete(checkbox.value);
+    onBuildChanged();
+  });
+
+  byId('resetToStock').addEventListener('click', () => {
+    selectedModificationIds.clear();
+    partsList.querySelectorAll('input').forEach((checkbox) => { checkbox.checked = false; });
+    onBuildChanged();
+  });
+
+  function onBuildChanged() {
+    fittedParameters = resolveVehicleParameters(selectedModificationIds);
+    referenceComparison = compareReferenceDrive(selectedModificationIds);
+    byId('fittedCount').textContent = `${selectedModificationIds.size} fitted / ${MODIFICATION_CATALOG.length} options`;
+    renderReferenceComparison();
+    resetScenarioCounter();
+    renderNationalScenario();
+    if (carScene) carScene.applyModifications(selectedModificationIds);
+  }
+
+  function renderReferenceComparison() {
+    const { stockCo2Grams, modifiedCo2Grams } = referenceComparison;
+    const scaleMaximum = Math.max(stockCo2Grams, modifiedCo2Grams);
+    byId('refStock').textContent = formatGrams(stockCo2Grams);
+    byId('refBuild').textContent = formatGrams(modifiedCo2Grams);
+    byId('refBarStock').style.width = (stockCo2Grams / scaleMaximum * 100) + '%';
+    byId('refBarBuild').style.width = (modifiedCo2Grams / scaleMaximum * 100) + '%';
+    const percentChange = (modifiedCo2Grams - stockCo2Grams) / stockCo2Grams * 100;
+    const verdict = byId('refVerdict');
+    if (Math.abs(percentChange) < 1e-9) { verdict.textContent = 'Same as stock'; verdict.className = 'verdict'; }
+    else if (percentChange < 0) { verdict.textContent = `${Math.abs(percentChange).toFixed(2)}% less CO₂ than stock`; verdict.className = 'verdict less'; }
+    else { verdict.textContent = `${percentChange.toFixed(2)}% more CO₂ than stock`; verdict.className = 'verdict more'; }
+  }
+
+  /* ---------------- National scenario ---------------- */
+  function computeNationalScenario() {
+    const projectedMillionMetricTons = BASELINE_ANNUAL_MILLION_METRIC_TONS *
+      ((1 - adoptionFraction) + adoptionFraction * referenceComparison.emissionsRatio);
+    const avoidedMillionMetricTons = BASELINE_ANNUAL_MILLION_METRIC_TONS - projectedMillionMetricTons;
+    const toMetricTonsPerSecond = (millionMetricTons) => millionMetricTons * 1e6 / SECONDS_IN_BASELINE_YEAR;
+    return {
+      projectedMillionMetricTons,
+      avoidedMillionMetricTons,
+      baselineMetricTonsPerSecond: toMetricTonsPerSecond(BASELINE_ANNUAL_MILLION_METRIC_TONS),
+      projectedMetricTonsPerSecond: toMetricTonsPerSecond(projectedMillionMetricTons),
+      avoidedMetricTonsPerSecond: toMetricTonsPerSecond(avoidedMillionMetricTons),
+    };
+  }
+
+  function renderNationalScenario() {
+    const scenario = computeNationalScenario();
+    byId('usProjected').textContent = scenario.projectedMillionMetricTons.toFixed(1);
+    byId('usScenarioValue').textContent = scenario.projectedMillionMetricTons.toFixed(1) + ' million t';
+    byId('usBaselineValue').textContent = BASELINE_ANNUAL_MILLION_METRIC_TONS.toFixed(1) + ' million t';
+    const scaleMaximum = Math.max(BASELINE_ANNUAL_MILLION_METRIC_TONS, scenario.projectedMillionMetricTons);
+    byId('usBarBaseline').style.width = (BASELINE_ANNUAL_MILLION_METRIC_TONS / scaleMaximum * 100) + '%';
+    byId('usBarScenario').style.width = (scenario.projectedMillionMetricTons / scaleMaximum * 100) + '%';
+
+    const change = byId('usChange');
+    const counterLabel = byId('counterLabel');
+    if (Math.abs(scenario.avoidedMillionMetricTons) < 1e-9) {
+      change.textContent = 'No change from the 2023 baseline'; change.className = 'change';
+      counterLabel.textContent = 'Estimated CO₂ avoided since this scenario began';
+    } else if (scenario.avoidedMillionMetricTons > 0) {
+      change.textContent = `${scenario.avoidedMillionMetricTons.toFixed(2)} million metric tons less per year`; change.className = 'change less';
+      counterLabel.textContent = 'Estimated CO₂ avoided since this scenario began';
+    } else {
+      change.textContent = `${Math.abs(scenario.avoidedMillionMetricTons).toFixed(2)} million metric tons more per year`; change.className = 'change more';
+      counterLabel.textContent = 'Estimated CO₂ added since this scenario began';
+    }
+    byId('rateBaseline').textContent = scenario.baselineMetricTonsPerSecond.toFixed(2) + ' t/s';
+    byId('rateScenario').textContent = scenario.projectedMetricTonsPerSecond.toFixed(2) + ' t/s';
+
+    const applied = byId('appliedParts');
+    applied.innerHTML = '';
+    if (selectedModificationIds.size === 0) {
+      const empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = 'None: stock build'; applied.appendChild(empty);
+    } else {
+      for (const modification of MODIFICATION_CATALOG) {
+        if (!selectedModificationIds.has(modification.id)) continue;
+        const item = document.createElement('li'); item.textContent = modification.name; applied.appendChild(item);
+      }
+    }
+    renderHeatmap();
+  }
+
+  function resetScenarioCounter() { scenarioStartedAtMilliseconds = performance.now(); }
+
+  function renderScenarioCounter(nowMilliseconds) {
+    const scenario = computeNationalScenario();
+    const elapsedSeconds = (nowMilliseconds - scenarioStartedAtMilliseconds) / 1000;
+    const metricTons = Math.abs(scenario.avoidedMetricTonsPerSecond) * elapsedSeconds;
+    byId('counterValue').textContent = metricTons.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  const adoptionInput = byId('adoptionPercent');
+  adoptionInput.addEventListener('input', () => {
+    adoptionFraction = Number(adoptionInput.value) / 100;
+    byId('adoptionOutput').textContent = adoptionInput.value + '%';
+    resetScenarioCounter();
+    renderNationalScenario();
+  });
+
+  /* ---------------- Heatmap: driving condition x fleet adoption ---------------- */
+  function referenceSegmentCo2Grams(parameters, startSeconds, endSeconds) {
+    let totalCo2Grams = 0;
+    for (let elapsedSeconds = startSeconds; elapsedSeconds < endSeconds - 1e-9; elapsedSeconds += TIME_STEP_SECONDS) {
+      const sample = referenceDriveSample(elapsedSeconds);
+      totalCo2Grams += co2GramsPerSecond(parameters, sample.speedMetersPerSecond, sample.accelerationMetersPerSecondSquared) * TIME_STEP_SECONDS;
+    }
+    return totalCo2Grams;
+  }
+  const steadySpeedRatio = (speedMph) => {
+    const speedMetersPerSecond = speedMph * METERS_PER_SECOND_PER_MPH;
+    return co2GramsPerSecond(fittedParameters, speedMetersPerSecond, 0) / co2GramsPerSecond(STOCK_PARAMETERS, speedMetersPerSecond, 0);
+  };
+  const STOCK_CITY_SEGMENT_CO2_GRAMS = referenceSegmentCo2Grams(STOCK_PARAMETERS, 0, 60);
+  const MINIMUM_TRIP_CO2_GRAMS_FOR_LIVE_ROW = 0.5;
+
+  const HEATMAP_ADOPTION_PERCENTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+  const HEATMAP_ROWS = [
+    { label: 'Steady 15 mph', emissionsRatio: () => steadySpeedRatio(15) },
+    { label: 'Steady 30 mph', emissionsRatio: () => steadySpeedRatio(30) },
+    { label: 'Steady 45 mph', emissionsRatio: () => steadySpeedRatio(45) },
+    { label: 'Steady 60 mph', emissionsRatio: () => steadySpeedRatio(60) },
+    { label: 'Steady 75 mph', emissionsRatio: () => steadySpeedRatio(75) },
+    { label: 'Stop-and-go city', emissionsRatio: () => referenceSegmentCo2Grams(fittedParameters, 0, 60) / STOCK_CITY_SEGMENT_CO2_GRAMS, gapBefore: false },
+    { label: 'Reference mix (headline)', emissionsRatio: () => referenceComparison.emissionsRatio, isHeadline: true, gapBefore: true },
+    { label: 'Your Car lab trip', isLive: true, excludedFromScale: true,
+      emissionsRatio: () => simulation.stockTripCo2Grams >= MINIMUM_TRIP_CO2_GRAMS_FOR_LIVE_ROW
+        ? simulation.modifiedTripCo2Grams / simulation.stockTripCo2Grams : null },
+  ];
+
+  const heatGrid = byId('heatGrid');
+  const heatBlock = byId('heatBlock');
+  const heatTooltip = byId('heatTooltip');
+  const heatCellElements = [];
+  const heatCellValues = [];
+  let tooltipAnchorCell = null;
+
+  (function buildHeatmapGrid() {
+    heatGrid.appendChild(document.createElement('div'));
+    for (const adoptionPercent of HEATMAP_ADOPTION_PERCENTS) {
+      const columnLabel = document.createElement('div');
+      columnLabel.className = 'heat-col-label';
+      columnLabel.textContent = adoptionPercent % 20 === 0 ? adoptionPercent + '%' : '';
+      heatGrid.appendChild(columnLabel);
+    }
+    HEATMAP_ROWS.forEach((row, rowIndex) => {
+      if (row.gapBefore) {
+        const gap = document.createElement('div');
+        gap.className = 'heat-row-gap';
+        heatGrid.appendChild(gap);
+      }
+      const rowLabel = document.createElement('div');
+      rowLabel.className = 'heat-row-label' + (row.isHeadline ? ' is-headline' : '') + (row.isLive ? ' is-live' : '');
+      rowLabel.innerHTML = (row.isLive ? '<span class="live-dot" aria-hidden="true"></span>' : '') + row.label;
+      heatGrid.appendChild(rowLabel);
+      heatCellElements[rowIndex] = [];
+      HEATMAP_ADOPTION_PERCENTS.forEach((adoptionPercent, columnIndex) => {
+        const cell = document.createElement('div');
+        cell.className = 'heat-cell';
+        cell.setAttribute('role', 'gridcell');
+        cell.tabIndex = row.isHeadline && columnIndex === HEATMAP_ADOPTION_PERCENTS.length - 1 ? 0 : -1;
+        cell.dataset.rowIndex = rowIndex;
+        cell.dataset.columnIndex = columnIndex;
+        heatGrid.appendChild(cell);
+        heatCellElements[rowIndex][columnIndex] = cell;
+      });
+    });
+    const marker = document.createElement('div');
+    marker.className = 'heat-marker';
+    marker.id = 'heatMarker';
+    heatGrid.appendChild(marker);
+  })();
+
+  function describeHeatCell(rowIndex, columnIndex) {
+    const row = HEATMAP_ROWS[rowIndex];
+    const adoptionPercent = HEATMAP_ADOPTION_PERCENTS[columnIndex];
+    const changeMillionMetricTons = heatCellValues[rowIndex][columnIndex];
+    const heading = `${row.label} · ${adoptionPercent}% adoption`;
+    if (changeMillionMetricTons === null) return { heading, detail: 'No trip yet. Drive in the Car lab to fill this row.' };
+    if (Math.abs(changeMillionMetricTons) < 0.005) return { heading, detail: 'No change from the 976.0 million t baseline' };
+    const percentOfBaseline = Math.abs(changeMillionMetricTons) / BASELINE_ANNUAL_MILLION_METRIC_TONS * 100;
+    const direction = changeMillionMetricTons < 0 ? 'less' : 'more';
+    return { heading, detail: `${Math.abs(changeMillionMetricTons).toFixed(2)} million t ${direction} per year (${percentOfBaseline.toFixed(2)}% of baseline)` };
+  }
+
+  function renderHeatmap() {
+    let largestScaledChange = 0.5;
+    HEATMAP_ROWS.forEach((row, rowIndex) => {
+      const emissionsRatio = row.emissionsRatio();
+      heatCellValues[rowIndex] = HEATMAP_ADOPTION_PERCENTS.map((adoptionPercent) =>
+        emissionsRatio === null ? null : BASELINE_ANNUAL_MILLION_METRIC_TONS * (adoptionPercent / 100) * (emissionsRatio - 1));
+      if (!row.excludedFromScale && emissionsRatio !== null) {
+        for (const value of heatCellValues[rowIndex]) largestScaledChange = Math.max(largestScaledChange, Math.abs(value));
+      }
+    });
+    HEATMAP_ROWS.forEach((row, rowIndex) => {
+      heatCellValues[rowIndex].forEach((changeMillionMetricTons, columnIndex) => {
+        const cell = heatCellElements[rowIndex][columnIndex];
+        const { heading, detail } = describeHeatCell(rowIndex, columnIndex);
+        cell.setAttribute('aria-label', `${heading}: ${detail}`);
+        if (changeMillionMetricTons === null) { cell.classList.add('is-empty'); cell.style.backgroundColor = ''; return; }
+        cell.classList.remove('is-empty');
+        const intensityPercent = Math.min(100, Math.abs(changeMillionMetricTons) / largestScaledChange * 100);
+        const poleToken = changeMillionMetricTons < 0 ? '--heat-less' : '--heat-more';
+        cell.style.backgroundColor = intensityPercent < 0.01
+          ? 'var(--heat-neutral)'
+          : `color-mix(in oklab, var(${poleToken}) ${intensityPercent.toFixed(1)}%, var(--heat-neutral))`;
+      });
+    });
+    byId('legendLess').textContent = `−${largestScaledChange.toFixed(1)} less`;
+    byId('legendMore').textContent = `+${largestScaledChange.toFixed(1)} more`;
+    if (tooltipAnchorCell) showHeatTooltip(tooltipAnchorCell);
+    positionHeatmapMarker();
+  }
+
+  function positionHeatmapMarker() {
+    const marker = byId('heatMarker');
+    const firstCell = heatCellElements[0][0];
+    const lastColumnCell = heatCellElements[0][HEATMAP_ADOPTION_PERCENTS.length - 1];
+    const bottomCell = heatCellElements[HEATMAP_ROWS.length - 1][0];
+    if (!firstCell.offsetWidth) return;
+    const firstCenter = firstCell.offsetLeft + firstCell.offsetWidth / 2;
+    const lastCenter = lastColumnCell.offsetLeft + lastColumnCell.offsetWidth / 2;
+    marker.style.left = (firstCenter + adoptionFraction * (lastCenter - firstCenter)) + 'px';
+    marker.style.top = (firstCell.offsetTop - 3) + 'px';
+    marker.style.height = (bottomCell.offsetTop + bottomCell.offsetHeight - firstCell.offsetTop + 6) + 'px';
+  }
+  new ResizeObserver(positionHeatmapMarker).observe(heatGrid);
+
+  function showHeatTooltip(cell) {
+    tooltipAnchorCell = cell;
+    const { heading, detail } = describeHeatCell(Number(cell.dataset.rowIndex), Number(cell.dataset.columnIndex));
+    heatTooltip.innerHTML = '';
+    const headingElement = document.createElement('strong');
+    headingElement.textContent = heading;
+    const detailElement = document.createElement('span');
+    detailElement.textContent = detail;
+    heatTooltip.append(headingElement, detailElement);
+    heatTooltip.hidden = false;
+    const blockRect = heatBlock.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const tooltipWidth = heatTooltip.offsetWidth;
+    const tooltipHeight = heatTooltip.offsetHeight;
+    const left = Math.min(Math.max(0, cellRect.left - blockRect.left + cellRect.width / 2 - tooltipWidth / 2), blockRect.width - tooltipWidth);
+    let top = cellRect.top - blockRect.top - tooltipHeight - 8;
+    if (top < 0) top = cellRect.bottom - blockRect.top + 8;
+    heatTooltip.style.left = left + 'px';
+    heatTooltip.style.top = top + 'px';
+  }
+  function hideHeatTooltip() { tooltipAnchorCell = null; heatTooltip.hidden = true; }
+
+  heatGrid.addEventListener('pointerover', (event) => { const cell = event.target.closest('.heat-cell'); if (cell) showHeatTooltip(cell); });
+  heatGrid.addEventListener('pointerleave', hideHeatTooltip);
+  heatGrid.addEventListener('focusin', (event) => { const cell = event.target.closest('.heat-cell'); if (cell) showHeatTooltip(cell); });
+  heatGrid.addEventListener('focusout', hideHeatTooltip);
+  heatGrid.addEventListener('keydown', (event) => {
+    const cell = event.target.closest('.heat-cell');
+    if (!cell) return;
+    const moves = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
+    const move = moves[event.key];
+    if (!move) return;
+    event.preventDefault();
+    const nextRow = Math.min(HEATMAP_ROWS.length - 1, Math.max(0, Number(cell.dataset.rowIndex) + move[0]));
+    const nextColumn = Math.min(HEATMAP_ADOPTION_PERCENTS.length - 1, Math.max(0, Number(cell.dataset.columnIndex) + move[1]));
+    const nextCell = heatCellElements[nextRow][nextColumn];
+    cell.tabIndex = -1;
+    nextCell.tabIndex = 0;
+    nextCell.focus();
+  });
+
+  /* ---------------- Tabs ---------------- */
+  function showTab(tabName) {
+    const showLab = tabName === 'lab';
+    byId('tab-lab').setAttribute('aria-selected', String(showLab));
+    byId('tab-us').setAttribute('aria-selected', String(!showLab));
+    byId('panel-lab').hidden = !showLab;
+    byId('panel-us').hidden = showLab;
+    releasePedals();
+    hideHeatTooltip();
+    if (showLab && carScene) carScene.resize();
+    if (!showLab) renderHeatmap();
+  }
+  byId('tab-lab').addEventListener('click', () => showTab('lab'));
+  byId('tab-us').addEventListener('click', () => showTab('us'));
+  byId('editBuild').addEventListener('click', () => showTab('lab'));
+  byId('applyAcrossUs').addEventListener('click', () => { resetScenarioCounter(); renderNationalScenario(); showTab('us'); });
+
+  /* ---------------- Pedals ---------------- */
+  const acceleratorPedal = byId('acceleratorPedal');
+  const brakePedal = byId('brakePedal');
+  function setPedal(pedalName, isHeld) {
+    pedals[pedalName] = isHeld;
+    (pedalName === 'acceleratorHeld' ? acceleratorPedal : brakePedal).dataset.held = String(isHeld);
+  }
+  function releasePedals() { setPedal('acceleratorHeld', false); setPedal('brakeHeld', false); }
+  function bindPedal(button, pedalName) {
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      try { button.setPointerCapture(event.pointerId); } catch (error) { /* capture is optional */ }
+      setPedal(pedalName, true);
+    });
+    for (const releaseEvent of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      button.addEventListener(releaseEvent, () => setPedal(pedalName, false));
+    }
+    button.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setPedal(pedalName, true); }
+    });
+    button.addEventListener('keyup', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') setPedal(pedalName, false);
+    });
+    button.addEventListener('blur', () => setPedal(pedalName, false));
+  }
+  bindPedal(acceleratorPedal, 'acceleratorHeld');
+  bindPedal(brakePedal, 'brakeHeld');
+
+  const KEY_TO_PEDAL = { ArrowUp: 'acceleratorHeld', w: 'acceleratorHeld', W: 'acceleratorHeld', ArrowDown: 'brakeHeld', s: 'brakeHeld', S: 'brakeHeld' };
+  function keyboardTargetsPage(event) {
+    const tag = event.target && event.target.tagName;
+    return !byId('panel-lab').hidden && tag !== 'INPUT' && tag !== 'TEXTAREA';
+  }
+  window.addEventListener('keydown', (event) => {
+    const pedalName = KEY_TO_PEDAL[event.key];
+    if (!pedalName || !keyboardTargetsPage(event)) return;
+    event.preventDefault();
+    setPedal(pedalName, true);
+  });
+  window.addEventListener('keyup', (event) => {
+    const pedalName = KEY_TO_PEDAL[event.key];
+    if (pedalName) setPedal(pedalName, false);
+  });
+  window.addEventListener('blur', releasePedals);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releasePedals(); });
+
+  byId('resetDrive').addEventListener('click', () => {
+    simulation.speedMetersPerSecond = 0;
+    simulation.modifiedTripCo2Grams = 0;
+    simulation.stockTripCo2Grams = 0;
+    releasePedals();
+  });
+
+  const pauseToggle = byId('pauseToggle');
+  pauseToggle.addEventListener('click', () => {
+    simulationIsPaused = !simulationIsPaused;
+    releasePedals();
+    pauseToggle.setAttribute('aria-label', simulationIsPaused ? 'Resume simulation' : 'Pause simulation');
+    pauseToggle.title = simulationIsPaused ? 'Resume' : 'Pause';
+    byId('pauseIcon').innerHTML = simulationIsPaused ? '<path d="M8 5l11 7-11 7z"/>' : '<path d="M9 5v14M15 5v14"/>';
+  });
+
+  /* ---------------- 3D scene ---------------- */
+  function createCarScene(stageElement) {
+    if (typeof THREE === 'undefined' || typeof THREE.OrbitControls === 'undefined') return null;
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      if (!renderer.getContext()) return null;
+    } catch (error) { return null; }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    stageElement.prepend(renderer.domElement);
+
+    const backgroundColor = new THREE.Color('#1a222b');
+    const scene = new THREE.Scene();
+    scene.background = backgroundColor;
+    scene.fog = new THREE.Fog(backgroundColor, 13, 34);
+
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = 1.3;
+    controls.maxDistance = 14;
+    controls.maxPolarAngle = Math.PI * 0.49;
+
+    scene.add(new THREE.HemisphereLight(0xdde7f0, 0x161c22, 0.85));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.05);
+    keyLight.position.set(5, 8, 4);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
+    Object.assign(keyLight.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 20 });
+    scene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x9dc2d6, 0.45);
+    rimLight.position.set(-6, 3, -5);
+    scene.add(rimLight);
+
+    // Ground, road, and moving lane dashes
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ color: 0x161d24, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(120, 5.2), new THREE.MeshStandardMaterial({ color: 0x1e2731, roughness: 0.95 }));
+    road.rotation.x = -Math.PI / 2;
+    road.position.y = 0.002;
+    road.receiveShadow = true;
+    scene.add(road);
+    const laneDashes = [];
+    const dashMaterial = new THREE.MeshStandardMaterial({ color: 0x5d6b78, roughness: 0.8 });
+    for (const laneZ of [-2.2, 2.2]) {
+      for (let dashIndex = 0; dashIndex < 20; dashIndex++) {
+        const dash = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.004, 0.08), dashMaterial);
+        dash.position.set(-30 + dashIndex * 3, 0.004, laneZ);
+        scene.add(dash);
+        laneDashes.push(dash);
+      }
+    }
+
+    // Materials
+    const paintMaterial = new THREE.MeshStandardMaterial({ color: 0xbfcad4, metalness: 0.55, roughness: 0.32 });
+    const glassMaterial = new THREE.MeshStandardMaterial({ color: 0x1b2631, metalness: 0.3, roughness: 0.08, transparent: true, opacity: 0.88 });
+    const trimMaterial = new THREE.MeshStandardMaterial({ color: 0x252e38, roughness: 0.7 });
+    const rubberMaterial = new THREE.MeshStandardMaterial({ color: 0x17191c, roughness: 0.92 });
+    const rimMaterial = new THREE.MeshStandardMaterial({ color: 0x8e99a4, metalness: 0.8, roughness: 0.3 });
+    const coverMaterial = new THREE.MeshStandardMaterial({ color: 0xd3dbe2, metalness: 0.25, roughness: 0.35 });
+    const engineSteelMaterial = new THREE.MeshStandardMaterial({ color: 0xa9b4be, metalness: 0.75, roughness: 0.3 });
+    const boreMaterial = new THREE.MeshStandardMaterial({ color: 0x9dc2d6, metalness: 0.2, roughness: 0.2, transparent: true, opacity: 0.22, depthWrite: false });
+
+    const car = new THREE.Group();
+    scene.add(car);
+
+    // Lower body: side profile extruded across the width, with wheel arches
+    const lowerProfile = new THREE.Shape();
+    lowerProfile.moveTo(-2.30, 0.33);
+    lowerProfile.lineTo(-1.80, 0.33);
+    lowerProfile.absarc(-1.40, 0.33, 0.40, Math.PI, 0, true);
+    lowerProfile.lineTo(1.00, 0.33);
+    lowerProfile.absarc(1.40, 0.33, 0.40, Math.PI, 0, true);
+    lowerProfile.lineTo(2.24, 0.33);
+    lowerProfile.quadraticCurveTo(2.38, 0.36, 2.38, 0.52);
+    lowerProfile.lineTo(2.34, 0.72);
+    lowerProfile.quadraticCurveTo(2.30, 0.80, 2.08, 0.83);
+    lowerProfile.lineTo(1.00, 0.95);
+    lowerProfile.lineTo(-1.70, 0.99);
+    lowerProfile.lineTo(-2.20, 0.97);
+    lowerProfile.quadraticCurveTo(-2.36, 0.94, -2.37, 0.80);
+    lowerProfile.lineTo(-2.38, 0.50);
+    lowerProfile.quadraticCurveTo(-2.37, 0.34, -2.30, 0.33);
+    const lowerGeometry = new THREE.ExtrudeGeometry(lowerProfile, { depth: 1.72, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 4, curveSegments: 24 });
+    lowerGeometry.translate(0, 0, -0.86);
+    const lowerBody = new THREE.Mesh(lowerGeometry, paintMaterial);
+    lowerBody.castShadow = true;
+    car.add(lowerBody);
+
+    // Greenhouse (glass) and roof skin
+    const cabinProfile = new THREE.Shape();
+    cabinProfile.moveTo(1.02, 0.94);
+    cabinProfile.quadraticCurveTo(0.55, 1.24, 0.28, 1.40);
+    cabinProfile.lineTo(-0.85, 1.42);
+    cabinProfile.quadraticCurveTo(-1.35, 1.30, -1.72, 0.98);
+    cabinProfile.lineTo(1.02, 0.94);
+    const cabinGeometry = new THREE.ExtrudeGeometry(cabinProfile, { depth: 1.52, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.03, bevelSegments: 3, curveSegments: 16 });
+    cabinGeometry.translate(0, 0, -0.76);
+    const cabin = new THREE.Mesh(cabinGeometry, glassMaterial);
+    cabin.castShadow = true;
+    car.add(cabin);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.035, 1.5), paintMaterial);
+    roof.position.set(-0.28, 1.455, 0);
+    car.add(roof);
+
+    // Lights
+    const headlightMaterial = new THREE.MeshStandardMaterial({ color: 0xe8f0f6, emissive: 0xb9cbd8, emissiveIntensity: 0.6 });
+    const taillightMaterial = new THREE.MeshStandardMaterial({ color: 0x8e3a30, emissive: 0x9a3328, emissiveIntensity: 0.7 });
+    for (const side of [-1, 1]) {
+      const headlight = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.34), headlightMaterial);
+      headlight.position.set(2.37, 0.70, side * 0.58);
+      car.add(headlight);
+      const taillight = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.36), taillightMaterial);
+      taillight.position.set(-2.40, 0.82, side * 0.6);
+      car.add(taillight);
+    }
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.2, 16), trimMaterial);
+    exhaust.rotation.z = Math.PI / 2;
+    exhaust.position.set(-2.38, 0.34, 0.5);
+    car.add(exhaust);
+
+    // Wheels
+    const wheelSpinGroups = [];
+    const wheelCoverMeshes = [];
+    for (const [wheelX, wheelZ] of [[1.4, 0.8], [1.4, -0.8], [-1.4, 0.8], [-1.4, -0.8]]) {
+      const outwardSign = Math.sign(wheelZ);
+      const wheel = new THREE.Group();
+      wheel.position.set(wheelX, 0.33, wheelZ);
+      const spin = new THREE.Group();
+      wheel.add(spin);
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 40), rubberMaterial);
+      tire.rotation.x = Math.PI / 2;
+      tire.castShadow = true;
+      spin.add(tire);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.226, 32), rimMaterial);
+      rim.rotation.x = Math.PI / 2;
+      spin.add(rim);
+      for (let spokeIndex = 0; spokeIndex < 5; spokeIndex++) {
+        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.19, 0.014), trimMaterial);
+        const spokeAngle = spokeIndex / 5 * Math.PI * 2;
+        spoke.position.set(Math.sin(spokeAngle) * 0.1, Math.cos(spokeAngle) * 0.1, outwardSign * 0.116);
+        spoke.rotation.z = -spokeAngle;
+        spin.add(spoke);
+      }
+      const cover = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.014, 40), coverMaterial);
+      cover.rotation.x = Math.PI / 2;
+      cover.position.z = outwardSign * 0.122;
+      cover.visible = false;
+      spin.add(cover);
+      wheelCoverMeshes.push(cover);
+      car.add(wheel);
+      wheelSpinGroups.push(spin);
+    }
+
+    // Modification meshes
+    const undertray = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.02, 1.62), new THREE.MeshStandardMaterial({ color: 0x3a4652, metalness: 0.4, roughness: 0.5 }));
+    undertray.position.set(0, 0.27, 0);
+    undertray.visible = false;
+    car.add(undertray);
+
+    const cargoBox = new THREE.Group();
+    for (const barX of [-0.75, 0.15]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 1.56), trimMaterial);
+      bar.position.set(barX, 1.5, 0);
+      cargoBox.add(bar);
+    }
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.26, 0.86), new THREE.MeshStandardMaterial({ color: 0x2f3944, metalness: 0.2, roughness: 0.45 }));
+    box.position.set(-0.3, 1.65, 0);
+    box.castShadow = true;
+    cargoBox.add(box);
+    cargoBox.visible = false;
+    car.add(cargoBox);
+
+    const extraCargo = new THREE.Group();
+    const crateMaterial = new THREE.MeshStandardMaterial({ color: 0xa88457, roughness: 0.85 });
+    for (const [crateX, crateZ, crateSize] of [[-1.95, 0.35, 0.34], [-1.95, -0.3, 0.38], [-1.55, 0.05, 0.3]]) {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(crateSize, crateSize, crateSize), crateMaterial);
+      crate.position.set(crateX, 0.42 + crateSize / 2, crateZ);
+      extraCargo.add(crate);
+    }
+    extraCargo.visible = false;
+    car.add(extraCargo);
+
+    // Engine: transverse inline-four, crank axis along z
+    const ENGINE_CRANK_RADIUS = 0.04;
+    const ENGINE_ROD_LENGTH = 0.14;
+    const CYLINDER_Z_POSITIONS = [-0.24, -0.08, 0.08, 0.24]; // cylinders 1..4
+    const CYLINDER_PHASE_OFFSETS = [0, Math.PI, Math.PI, 0]; // 1 & 4 together, 2 & 3 opposite
+    const FIRING_CRANK_ANGLE_DEGREES = [0, 540, 180, 360]; // firing order 1-3-4-2
+    const engine = new THREE.Group();
+    engine.position.set(1.62, 0.42, 0);
+    engine.scale.setScalar(1.25);
+    car.add(engine);
+
+    const crankshaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.66, 16), engineSteelMaterial);
+    crankshaft.rotation.x = Math.PI / 2;
+    engine.add(crankshaft);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.64), new THREE.MeshStandardMaterial({ color: 0x55616d, metalness: 0.5, roughness: 0.45, transparent: true, opacity: 0.55 }));
+    head.position.y = 0.295;
+    engine.add(head);
+    const camshaft = new THREE.Group();
+    camshaft.position.y = 0.335;
+    const camshaftBar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.64, 12), engineSteelMaterial);
+    camshaftBar.rotation.x = Math.PI / 2;
+    camshaft.add(camshaftBar);
+    for (const cylinderZ of CYLINDER_Z_POSITIONS) {
+      const lobe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.022, 0.02), engineSteelMaterial);
+      lobe.position.set(0.012, 0, cylinderZ);
+      camshaft.add(lobe);
+    }
+    engine.add(camshaft);
+
+    const cylinderParts = CYLINDER_Z_POSITIONS.map((cylinderZ) => {
+      const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.2, 24, 1, true), boreMaterial.clone());
+      bore.position.set(0, 0.17, cylinderZ);
+      engine.add(bore);
+      const pistonMaterial = new THREE.MeshStandardMaterial({ color: 0xc4ccd3, metalness: 0.7, roughness: 0.3, emissive: 0xe5ae67, emissiveIntensity: 0 });
+      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.05, 24), pistonMaterial);
+      piston.position.z = cylinderZ;
+      engine.add(piston);
+      const rod = new THREE.Mesh(new THREE.BoxGeometry(0.018, ENGINE_ROD_LENGTH, 0.018), engineSteelMaterial);
+      rod.position.z = cylinderZ;
+      engine.add(rod);
+      const crankThrow = new THREE.Mesh(new THREE.BoxGeometry(0.02, ENGINE_CRANK_RADIUS + 0.02, 0.03), engineSteelMaterial);
+      crankThrow.position.z = cylinderZ;
+      engine.add(crankThrow);
+      return { bore, piston, pistonMaterial, rod, crankThrow };
+    });
+
+    function poseEngine(crankAngleRadians, engineIsVisible) {
+      if (!engineIsVisible) return;
+      const cycleDegrees = ((crankAngleRadians * 180 / Math.PI) % 720 + 720) % 720;
+      cylinderParts.forEach((parts, cylinderIndex) => {
+        const throwAngle = crankAngleRadians + CYLINDER_PHASE_OFFSETS[cylinderIndex];
+        const pinX = ENGINE_CRANK_RADIUS * Math.sin(throwAngle);
+        const pinY = ENGINE_CRANK_RADIUS * Math.cos(throwAngle);
+        const pistonY = pinY + Math.sqrt(ENGINE_ROD_LENGTH * ENGINE_ROD_LENGTH - pinX * pinX);
+        parts.piston.position.set(0, pistonY + 0.025, parts.piston.position.z);
+        parts.rod.position.set(pinX / 2, (pinY + pistonY) / 2, parts.rod.position.z);
+        parts.rod.rotation.z = Math.atan2(pinX, pistonY - pinY);
+        parts.crankThrow.position.set(pinX / 2, pinY / 2, parts.crankThrow.position.z);
+        parts.crankThrow.rotation.z = -throwAngle;
+        const degreesSinceFiring = (cycleDegrees - FIRING_CRANK_ANGLE_DEGREES[cylinderIndex] + 720) % 720;
+        const firingIntensity = degreesSinceFiring < 110 ? 1 - degreesSinceFiring / 110 : 0;
+        parts.pistonMaterial.emissiveIntensity = firingIntensity * 1.4;
+        parts.bore.material.opacity = 0.18 + firingIntensity * 0.4;
+        parts.bore.material.color.setHex(firingIntensity > 0 ? 0xe5ae67 : 0x9dc2d6);
+      });
+      camshaft.rotation.z = -crankAngleRadians / 2;
+    }
+
+    // View modes
+    const CAMERA_PRESETS = {
+      body: { position: new THREE.Vector3(5.2, 2.3, 5.6), target: new THREE.Vector3(0, 0.7, 0) },
+      cutaway: { position: new THREE.Vector3(4.3, 3.1, 4.4), target: new THREE.Vector3(0.3, 0.7, 0) },
+      engine: { position: new THREE.Vector3(2.85, 1.35, 1.85), target: new THREE.Vector3(1.62, 0.64, 0) },
+    };
+    const BODY_OPACITY_BY_VIEW = { body: 1, cutaway: 0.14, engine: 0.07 };
+    let cameraTween = null;
+
+    function setViewMode(nextViewMode, animateCamera) {
+      const bodyOpacity = BODY_OPACITY_BY_VIEW[nextViewMode];
+      paintMaterial.opacity = bodyOpacity;
+      paintMaterial.transparent = bodyOpacity < 1;
+      paintMaterial.depthWrite = bodyOpacity === 1;
+      paintMaterial.needsUpdate = true;
+      glassMaterial.opacity = bodyOpacity === 1 ? 0.88 : bodyOpacity * 0.6;
+      glassMaterial.depthWrite = bodyOpacity === 1;
+      glassMaterial.needsUpdate = true;
+      lowerBody.castShadow = bodyOpacity === 1;
+      cabin.castShadow = bodyOpacity === 1;
+      const preset = CAMERA_PRESETS[nextViewMode];
+      if (animateCamera && !prefersReducedMotion) {
+        cameraTween = { position: preset.position.clone(), target: preset.target.clone() };
+      } else {
+        camera.position.copy(preset.position);
+        controls.target.copy(preset.target);
+        cameraTween = null;
+      }
+    }
+    controls.addEventListener('start', () => { cameraTween = null; });
+
+    function applyModifications(modificationIds) {
+      wheelCoverMeshes.forEach((cover) => { cover.visible = modificationIds.has('wheel-covers'); });
+      undertray.visible = modificationIds.has('undertray');
+      cargoBox.visible = modificationIds.has('cargo-box');
+      extraCargo.visible = modificationIds.has('extra-cargo');
+    }
+
+    function resize() {
+      const width = stageElement.clientWidth;
+      const height = stageElement.clientHeight;
+      if (!width || !height) return;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resize).observe(stageElement);
+
+    function update(frameSeconds, speedMetersPerSecond, crankAngleRadians, currentViewMode) {
+      if (cameraTween) {
+        const blend = 1 - Math.exp(-frameSeconds * 5);
+        camera.position.lerp(cameraTween.position, blend);
+        controls.target.lerp(cameraTween.target, blend);
+        if (camera.position.distanceTo(cameraTween.position) < 0.01) cameraTween = null;
+      }
+      controls.update();
+      const wheelTurnRadians = speedMetersPerSecond / 0.33 * frameSeconds;
+      wheelSpinGroups.forEach((spin) => { spin.rotation.z -= wheelTurnRadians; });
+      if (!prefersReducedMotion) {
+        for (const dash of laneDashes) {
+          dash.position.x -= speedMetersPerSecond * frameSeconds;
+          if (dash.position.x < -30) dash.position.x += 60;
+        }
+      }
+      poseEngine(crankAngleRadians, currentViewMode !== 'body');
+      renderer.render(scene, camera);
+    }
+
+    setViewMode('body', false);
+    resize();
+    return { setViewMode, applyModifications, resize, update };
+  }
+
+  const stageElement = byId('stage');
+  const carScene = createCarScene(stageElement);
+  if (!carScene) {
+    const message = document.createElement('div');
+    message.className = 'webgl-missing';
+    message.textContent = 'The 3D view needs WebGL, which this browser could not start. Parts, pedals, and every calculation still work.';
+    stageElement.prepend(message);
+  }
+
+  document.querySelectorAll('[data-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      viewMode = button.dataset.view;
+      document.querySelectorAll('[data-view]').forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+      if (carScene) carScene.setViewMode(viewMode, true);
+    });
+  });
+  byId('resetCamera').addEventListener('click', () => { if (carScene) carScene.setViewMode(viewMode, true); });
+
+  /* ---------------- Instruments ---------------- */
+  let secondsSinceInstrumentUpdate = Infinity;
+  let secondsSinceHeatmapUpdate = 0;
+  function renderInstruments() {
+    const speedMetersPerSecond = simulation.speedMetersPerSecond;
+    const speedMph = speedMetersPerSecond / METERS_PER_SECOND_PER_MPH;
+    byId('speedReadout').textContent = Math.round(speedMph);
+    byId('rpmReadout').textContent = (Math.round(engineRpmForSpeed(speedMetersPerSecond) / 10) * 10).toLocaleString('en-US');
+    byId('gearReadout').textContent = 'Gear ' + (gearIndexForSpeed(speedMph) + 1);
+    const acceleration = simulation.appliedAccelerationMetersPerSecondSquared;
+    let driveState = 'Idling';
+    if (simulationIsPaused) driveState = 'Paused';
+    else if (speedMetersPerSecond > 0.01) driveState = pedals.brakeHeld ? 'Braking' : acceleration > 0.05 ? 'Accelerating' : speedMetersPerSecond >= SPEED_CAP_METERS_PER_SECOND - 0.01 ? 'Speed cap' : pedals.acceleratorHeld ? 'Cruising' : 'Coasting';
+    byId('driveState').textContent = driveState;
+    byId('co2Readout').textContent = simulation.modifiedCo2GramsPerSecond.toFixed(2);
+    byId('co2Stock').textContent = `Stock at this moment ${simulation.stockCo2GramsPerSecond.toFixed(2)} g/s`;
+    byId('tripTotals').textContent = `This trip: your build ${formatGrams(simulation.modifiedTripCo2Grams)} · stock ${formatGrams(simulation.stockTripCo2Grams)}, both computed on the same speed trace.`;
+  }
+
+  /* ---------------- Main loop: one render loop, fixed-step simulation ---------------- */
+  let lastFrameMilliseconds = performance.now();
+  let simulationAccumulatorSeconds = 0;
+  function frame(nowMilliseconds) {
+    const frameSeconds = Math.min(0.25, Math.max(0, (nowMilliseconds - lastFrameMilliseconds) / 1000));
+    lastFrameMilliseconds = nowMilliseconds;
+    if (!simulationIsPaused) {
+      simulationAccumulatorSeconds += frameSeconds;
+      while (simulationAccumulatorSeconds >= TIME_STEP_SECONDS) {
+        stepFreeDrive();
+        simulationAccumulatorSeconds -= TIME_STEP_SECONDS;
+      }
+      const rpm = engineRpmForSpeed(simulation.speedMetersPerSecond);
+      simulation.crankAngleRadians += rpm * 2 * Math.PI / 60 * frameSeconds / ENGINE_ANIMATION_SLOWDOWN_FACTOR;
+    }
+    secondsSinceInstrumentUpdate += frameSeconds;
+    if (secondsSinceInstrumentUpdate >= 0.1) {
+      renderInstruments();
+      if (!byId('panel-us').hidden) renderScenarioCounter(nowMilliseconds);
+      secondsSinceInstrumentUpdate = 0;
+    }
+    secondsSinceHeatmapUpdate += frameSeconds;
+    if (secondsSinceHeatmapUpdate >= 0.5 && !byId('panel-us').hidden) {
+      renderHeatmap();
+      secondsSinceHeatmapUpdate = 0;
+    }
+    if (carScene && !byId('panel-lab').hidden) {
+      carScene.update(simulationIsPaused ? 0 : frameSeconds, simulation.speedMetersPerSecond, simulation.crankAngleRadians, viewMode);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  onBuildChanged();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
